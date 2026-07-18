@@ -1,0 +1,22 @@
+{
+   "edgeExtensionName": {
+      "description": "扩展名称",
+      "message": "ChatOut - 导出 AI 会话"
+   },
+   "extensionDescription": {
+      "description": "扩展描述",
+      "message": "将 ChatGPT、Claude、Gemini、Grok、DeepSeek 等 AI 网页会话导出为 Markdown、文本、图片。支持一键下载/复制、自定义选择与 Notion 同步。"
+   },
+   "extensionName": {
+      "description": "扩展名称",
+      "message": "ChatOut"
+   },
+   "firefoxExtensionName": {
+      "description": "扩展名称 (Firefox)",
+      "message": "ChatOut - 导出 AI 会话"
+   },
+   "filename_opt_gemini_timestamp": {
+      "description": "Filename format option: Gemini Timestamp Title",
+      "message": "Gemini 时间戳标题"
+   }
+}

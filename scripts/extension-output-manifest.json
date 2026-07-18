@@ -1,0 +1,11 @@
+{
+  "background.js": "src/background/index.js",
+  "content-scripts/content.js": "src/content/content.js",
+  "content-scripts/start.js": "src/content/start.js",
+  "content-scripts/config.js": "src/content/config.js",
+  "inject-web.js": "src/shared/inject-web.js",
+  "shared/config.js": "src/shared/config.js",
+  "chunks/chunk-QIZ4XBKF-BhS6KZya.js": "src/shared/chunk.js",
+  "chunks/popup--djBx5PX.js": "src/popup/index.js",
+  "chunks/options-CjNsQ3MZ.js": "src/options/index.js"
+}

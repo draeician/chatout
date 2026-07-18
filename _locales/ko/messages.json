@@ -1,0 +1,22 @@
+{
+   "edgeExtensionName": {
+      "description": "The name of the extension for Edge",
+      "message": "ChatOut - AI 채팅 내보내기"
+   },
+   "extensionDescription": {
+      "description": "The description of the extension",
+      "message": "ChatGPT, Claude, Gemini, Grok, DeepSeek 등 대화를 Markdown/텍스트/이미지로 내보내기. 다운로드/복사, 선택 내보내기, Notion 동기화 지원."
+   },
+   "extensionName": {
+      "description": "The name of the extension",
+      "message": "ChatOut"
+   },
+   "firefoxExtensionName": {
+      "description": "The name of the extension for Firefox",
+      "message": "ChatOut - AI 채팅 내보내기"
+   },
+   "filename_opt_gemini_timestamp": {
+      "description": "Filename format option: Gemini Timestamp Title",
+      "message": "Gemini 타임스탬프 제목"
+   }
+}

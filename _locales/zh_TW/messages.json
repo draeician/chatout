@@ -1,0 +1,22 @@
+{
+   "edgeExtensionName": {
+      "description": "The name of the extension for Edge",
+      "message": "ChatOut - 匯出 AI 會話"
+   },
+   "extensionDescription": {
+      "description": "The description of the extension",
+      "message": "將 ChatGPT、Claude、Gemini、Grok、DeepSeek 等 AI 網頁會話匯出為 Markdown、文字、圖片。支援一鍵下載/複製、自訂選擇與 Notion 同步。"
+   },
+   "extensionName": {
+      "description": "The name of the extension",
+      "message": "ChatOut"
+   },
+   "firefoxExtensionName": {
+      "description": "The name of the extension for Firefox",
+      "message": "ChatOut - 匯出 AI 會話"
+   },
+   "filename_opt_gemini_timestamp": {
+      "description": "Filename format option: Gemini Timestamp Title",
+      "message": "Gemini 時間戳標題"
+   }
+}

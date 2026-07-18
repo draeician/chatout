@@ -1,0 +1,16 @@
+name: Forbidden analytics patterns
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  scan-extension-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan emitted extension artifacts for forbidden analytics patterns
+        run: ./scripts/check-forbidden-analytics-patterns.sh
+
+      - name: Scan emitted extension artifacts for forbidden domains
+        run: ./scripts/check-forbidden-domains.sh

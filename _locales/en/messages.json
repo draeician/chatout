@@ -1,0 +1,22 @@
+{
+   "edgeExtensionName": {
+      "description": "The name of the extension for Edge",
+      "message": "ChatOut - Export AI chats"
+   },
+   "extensionDescription": {
+      "description": "The description of the extension",
+      "message": "Export ChatGPT, Claude, Gemini, Grok, DeepSeek and other AI chats to Markdown, text, and image. Supports download/copy, content selection, and Notion sync."
+   },
+   "extensionName": {
+      "description": "The name of the extension",
+      "message": "ChatOut"
+   },
+   "firefoxExtensionName": {
+      "description": "The name of the extension for Firefox",
+      "message": "ChatOut - Export AI chats"
+   },
+   "filename_opt_gemini_timestamp": {
+      "message": "Gemini Timestamp Title",
+      "description": "Option to export with Gemini Timestamp format"
+   }
+}

@@ -1,0 +1,22 @@
+{
+   "edgeExtensionName": {
+      "description": "The name of the extension for Edge",
+      "message": "ChatOut - تصدير محادثات الذكاء الاصطناعي"
+   },
+   "extensionDescription": {
+      "description": "The description of the extension",
+      "message": "صدّر محادثات ChatGPT وClaude وGemini وGrok وDeepSeek إلى Markdown/نص/صورة. يدعم التنزيل والنسخ والتحديد ومزامنة Notion."
+   },
+   "extensionName": {
+      "description": "The name of the extension",
+      "message": "ChatOut"
+   },
+   "firefoxExtensionName": {
+      "description": "The name of the extension for Firefox",
+      "message": "ChatOut - تصدير محادثات الذكاء الاصطناعي"
+   },
+   "filename_opt_gemini_timestamp": {
+      "description": "Filename format option: Gemini Timestamp Title",
+      "message": "عنوان طابع Gemini الزمني"
+   }
+}

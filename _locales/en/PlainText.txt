@@ -1,0 +1,32 @@
+🚀 All-in-One AI Chat Management & Export Tool
+
+📌 Introduction
+Easily export conversations from top AI platforms like ChatGPT, DeepSeek, Gemini, and Claude to multiple formats including PDF, PNG, Markdown, and TXT. Make your AI interactions more efficient, archivable, and shareable. Whether it's study notes, code discussions, or investment analysis, this tool helps you quickly organize and back up your valuable dialogues.
+
+📌 Core Features
+✨ What’s New
+
+🆕 Google AI Overview Export: Save search results with one click
+🆕 One-Click Sync to Notion: Directly import chats from ChatGPT, DeepSeek, and Gemini
+🆕 One-Click Markdown Copy: Instantly reuse formatted content
+🆕 Export Settings: Choose whether to include AI reasoning steps
+
+✅ Multi-Format Export: PDF, PNG, Markdown, TXT
+✅ High-Quality Screenshots: Faithfully preserve chat UI and content
+✅ Markdown & TXT Support: Easy download, copy, and editing
+✅ Professionally Formatted PDF: Clean and readable output
+✅ Notion Sync: Centralize and manage conversations with ease
+✅ Custom Export Options: Select full or partial chat history
+✅ High-Quality Output: Professional-looking results every time
+
+📌 Perfect For:
+
+🎓 Students – Capture study notes and organize knowledge
+👨‍💻 Developers – Archive technical discussions and code snippets
+📊 Investors & Researchers – Save financial and data analysis
+📢 Content Creators – Easily share AI-generated content
+👔 Professionals – Share AI-driven ideas and boost team productivity
+
+🌟 Completely Free – Try It Today! 🌟
+
+🔗 Install Now and Unlock a Smarter Way to Record AI Conversations!

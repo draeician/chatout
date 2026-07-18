@@ -1,0 +1,94 @@
+[
+    {
+        "id": 1,
+        "priority": 3,
+        "action": {
+            "type": "modifyHeaders",
+            "responseHeaders": [
+                {
+                    "header": "content-security-policy",
+                    "operation": "remove"
+                },
+                {
+                    "header": "content-security-policy-report-only",
+                    "operation": "remove"
+                }
+            ]
+        },
+        "condition": {
+            "urlFilter": "*://gemini.google.com/*",
+            "resourceTypes": ["main_frame", "sub_frame"]
+        }
+    },
+    {
+        "id": 2,
+        "priority": 3,
+        "action": {
+            "type": "modifyHeaders",
+            "responseHeaders": [
+                {
+                    "header": "content-security-policy",
+                    "operation": "remove"
+                },
+                {
+                    "header": "content-security-policy-report-only",
+                    "operation": "remove"
+                }
+            ]
+        },
+        "condition": {
+            "urlFilter": "*://aistudio.google.com/*",
+            "resourceTypes": ["main_frame", "sub_frame"]
+        }
+    },
+    {
+        "id": 100,
+        "priority": 2,
+        "action": {
+            "type": "modifyHeaders",
+            "requestHeaders": [
+                {
+                    "header": "origin",
+                    "operation": "set",
+                    "value": "chrome-extension://knheggckgoiihginacbkhaalnibhilkk"
+                }
+            ]
+        },
+        "condition": {
+            "urlFilter": "https://www.notion.so/api/v3/*WebClipper*",
+            "resourceTypes": [
+                "xmlhttprequest"
+            ],
+            "domainType": "thirdParty",
+            "initiatorDomains": [
+                "bcofhijkopbcppedpgdkgjclkankhjfd",
+                "ckdlofhkhbcokenblpffbjbpojicickl"
+            ]
+        }
+    },
+    {
+        "id": 101,
+        "priority": 1,
+        "action": {
+            "type": "modifyHeaders",
+            "requestHeaders": [
+                {
+                    "header": "origin",
+                    "operation": "set",
+                    "value": "https://www.notion.so"
+                }
+            ]
+        },
+        "condition": {
+            "urlFilter": "https://www.notion.so/*",
+            "resourceTypes": [
+                "xmlhttprequest"
+            ],
+            "domainType": "thirdParty",
+            "initiatorDomains": [
+                "bcofhijkopbcppedpgdkgjclkankhjfd",
+                "ckdlofhkhbcokenblpffbjbpojicickl"
+            ]
+        }
+    }
+]

@@ -1,0 +1,36 @@
+.cursorindexingignore
+.specstory/
+archive/
+
+
+.cursorrules
+build_extension.sh
+content-scripts/content.js.*
+content-scripts/split/*
+explode_content.pl
+manifest.json.*
+update_manifest.py
+TODO
+
+# Chrome extension generated files
+_metadata/
+
+# Release build output (see scripts/package-extension.sh)
+dist/
+
+# Crules specific (tool-generated rule projections; canonical is AGENTS.md + .crules + .grok)
+.cursor/rules/*.mdc
+.claude/rules/*.md
+.github/instructions/*.instructions.md
+.clinerules/*.md
+.roorules/*.md
+.windsurf/rules/*.md
+.aider/rules/*.md
+.aider.conf.yml
+
+# Local agent session scratch (not shared policy)
+CLAUDE-RESUME.md
+RESUME.md
+NOTE.md
+PLAN.md
+ORIGINAL.md
