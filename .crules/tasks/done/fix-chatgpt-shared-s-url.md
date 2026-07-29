@@ -1,7 +1,7 @@
 # Fix: ChatGPT shared conversation URL (`/s/t_…`)
 
 **Branch:** `fix/chatgpt-shared-s-url`  
-**Status:** wip  
+**Status:** done (merged to main, verified by user)  
 **Reporter URL:** `https://chatgpt.com/s/t_6a6a1c6b76848191ade3a3e2829b2ed8`  
 **Type:** shared conversation link (friend-shared), not a normal `/c/{uuid}` chat.
 
@@ -42,7 +42,7 @@ Out of scope unless discovered during fix: other share URL shapes, guest-mode ro
 ## Acceptance criteria
 
 - [x] On `https://chatgpt.com/s/t_*`, popup does **not** treat the tab as home / “go to chat page”.
-- [ ] Export (at least Markdown or text) produces non-empty conversation content on a real shared page when messages are visible in the DOM. *(manual — needs live shared URL on laptop)*
+- [x] Export (at least Markdown or text) produces non-empty conversation content on a real shared page when messages are visible in the DOM. *(verified by user)*
 - [x] Existing `/c/{uuid}` and `/g/.../c/...` ChatGPT URLs still pass the chatPaths check (no regression — paths retained, `/s/` and `/share` added).
 - [x] Changes landed in `src/` and rebuilt artifacts match (`node scripts/build-extension.mjs`).
 - [x] No forbidden analytics/domains introduced.
@@ -57,3 +57,8 @@ Out of scope unless discovered during fix: other share URL shapes, guest-mode ro
 ## Done when
 
 User can export the reported shared URL style after reload; criteria above checked.
+
+## Closure
+
+- Merged to `main` (fast-forward).
+- Packaged `dist/chatout-chrome-v3.7.0.12` (+ zip) and `dist/RELEASE_NOTES_v3.7.0.12.md` (local/gitignored).
