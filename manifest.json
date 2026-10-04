@@ -98,7 +98,7 @@
       "scripting"
    ],
    "update_url": "https://clients2.google.com/service/update2/crx",
-   "version": "3.7.0.12",
+   "version": "3.7.0.13",
    "web_accessible_resources": [
       {
          "matches": [

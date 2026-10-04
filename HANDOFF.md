@@ -23,9 +23,9 @@ Make ChatOut reliably work on Chromium-based browsers and Firefox/LibreWolf, whi
 ### P0 - Grok export is broken
 
 - `TODO.md` says Grok export does not capture the full chat and mislabels user/assistant messages.
-- In `src/content/content.js`, Grok implementation `class ZF` currently uses `.message-bubble`.
-- Grok `detectChatType()` searches ancestor `.sr-only` text for the literal string `"chatgpt"`; otherwise it returns `"prompt"`. This is stale copied logic and can misclassify turns.
-- `getChatHtmlsAsync()` uses the presence of `.response-content-markdown` as its role heuristic and does not attempt to expand/scroll the conversation to ensure all turns are mounted.
+- ~~In `src/content/content.js`, Grok implementation `class ZF` currently uses `.message-bubble`.~~ Still uses `.message-bubble` (confirmed valid for current Tailwind Grok UI).
+- ~~Grok `detectChatType()` searches ancestor `.sr-only` text for the literal string `"chatgpt"`~~ **Fixed in Task 1** — now uses `.response-content-markdown`, `bg-surface-l1`, `max-w-none`, plus aria/sr-only fallbacks.
+- ~~`getChatHtmlsAsync()` … does not attempt to expand/scroll~~ **Fixed in Task 1** — `collectAllTurnElements()` scroll-harvests the Grok overflow container.
 
 ### P0 - Packaging can ship stale artifacts
 
@@ -59,7 +59,7 @@ Make ChatOut reliably work on Chromium-based browsers and Firefox/LibreWolf, whi
 
 ## Ordered task queue
 
-- [ ] **Task 1: Fix Grok full-chat extraction and role labeling.**
+- [x] **Task 1: Fix Grok full-chat extraction and role labeling.**
   - Determine current Grok DOM structure from existing diagnostics/debug harness and robust selectors.
   - Replace the stale `"chatgpt"` role heuristic.
   - Ensure full export collects all conversation turns, including virtualized/off-screen turns when necessary.
@@ -93,6 +93,44 @@ Make ChatOut reliably work on Chromium-based browsers and Firefox/LibreWolf, whi
   - Re-check manifest permissions, runtime APIs, packaging, and manual smoke steps for Chrome/Edge/Brave and Firefox/LibreWolf.
   - Update README/project docs so browser support and verification commands are exact.
 
+## Task 1 completion notes (2026-10-04)
+
+### Changes
+
+- Edited `src/content/content.js` Grok provider (`class ZF`):
+  - `_resolveMessageBubble`, `_findScrollContainer`, `_dedupeKey`, `collectAllTurnElements`
+  - `detectChatType` now prefers Tailwind cues: `.response-content-markdown` / `max-w-none` → assistant (`response`); `bg-surface-l1` → user (`prompt`); aria/sr-only text as fallback; removed `"chatgpt"` sniff
+  - `getChatHtmlsAsync(includeAll=true)` scroll-harvests turns before labeling; selected-export path uses the same `detectChatType`
+  - Thinking-container show/hide behavior preserved
+- Bumped `manifest.json` → `3.7.0.13`
+- Documented in `CHANGELOG.md`
+- Rebuilt via `node scripts/build-extension.mjs` (`content-scripts/content.js` matches `src/`)
+
+### Verification
+
+- `node scripts/build-extension.mjs` — pass (9 artifacts)
+- `./scripts/check-forbidden-analytics-patterns.sh` — pass
+- `./scripts/check-forbidden-domains.sh` — pass
+- Synthetic `detectChatType` cases (user `bg-surface-l1`, assistant `response-content-markdown` / `max-w-none`) — pass
+- Artifact check: ZF no longer contains `includes("chatgpt")`; contains `[Grok-AutoScroll]`
+- **Manual browser verification not run in this environment** (no live grok.com session). Required next:
+
+  1. Load unpacked `3.7.0.13` at `chrome://extensions` (and Firefox `about:debugging` if available).
+  2. Open a long Grok chat (`https://grok.com/c/...`) with ≥1 viewport of history.
+  3. Export full Markdown: confirm turn count matches the UI and labels alternate You / Grok correctly.
+  4. Spot-check image export still works.
+  5. Optional console: look for `[Grok-AutoScroll] DONE collected N`.
+
+### Remaining risks
+
+- Grok may virtualize in a way that programmatic scroll does not remount older turns (same class of issue ChatGPT hit); if manual test still truncates, consider a Grok REST/API harvest path later.
+- Class names (`bg-surface-l1`, `response-content-markdown`) can drift; keep title-debug / console probes handy.
+- Nested / thinking-only bubbles could still confuse edge cases despite nested-bubble skip.
+
+### Next task
+
+**Task 2: Make packaging rebuild from source every time.**
+
 ## Completion standard
 
 Do not mark the project task complete until:
@@ -107,4 +145,4 @@ Do not mark the project task complete until:
 
 ## Last update
 
-2026-10-04: Initial repository audit completed by ChatGPT. No product code changed yet.
+2026-10-04: Task 1 implemented (Grok role labeling + scroll harvest). Version `3.7.0.13`. Next: Task 2 packaging rebuild-from-source.
