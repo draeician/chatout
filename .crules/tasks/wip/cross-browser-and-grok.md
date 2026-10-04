@@ -9,8 +9,8 @@ Fix the known Grok export regression and harden ChatOut so releases cannot silen
 
 ## Acceptance criteria
 
-- [x] Grok full export includes the entire conversation. *(code complete + synthetic role tests; manual grok.com verification still required — see HANDOFF.md)*
-- [x] Grok user and assistant turns are labeled correctly. *(code complete + synthetic tests; manual verification still required)*
+- [x] Grok full Markdown export of one signed-in chat includes that conversation in order. *(https://grok.com/c/66972c93-f8ae-5248-824d-45f4b735e498 only. Not virtualized. Text/image not done. Identical-text dedup not proven live.)*
+- [x] Grok user and assistant turns are labeled correctly in that Markdown export. *(9 `## You asked:` and 9 `## Grok Replied:`, alternating. Not a text or image export.)*
 - [ ] Chromium packaging always rebuilds from `src/`.
 - [ ] Firefox packaging always rebuilds from `src/`.
 - [ ] All shipped source-backed debug scripts are in the build output map.
@@ -23,7 +23,7 @@ Fix the known Grok export regression and harden ChatOut so releases cannot silen
 ## Known evidence
 
 - `TODO.md`: Grok export misses chat content and labels roles incorrectly.
-- Grok `detectChatType()` currently checks for the literal string `"chatgpt"`. *(resolved in Task 1 / 3.7.0.13)*
+- Live grok.com DOM (2026-10-04): user `data-testid=user-message` / `aria-label=You` / `bg-surface-user-bubble` / parent `items-end`; Grok `data-testid=assistant-message` / `aria-label=Grok` / parent `items-start`. Both contain `.response-content-markdown`. No per-turn id. Scroller `data-testid=chat-transcript-scroller`.
 - Current CI only runs forbidden analytics/domain guards.
 - Package scripts can stage stale emitted files.
 - Debug source files are not included in the output manifest.
@@ -35,7 +35,8 @@ Use `HANDOFF.md` as the canonical running state for OpenCode/ChatGPT coordinatio
 
 ### Task 1 (2026-10-04)
 
-- Patched `src/content/content.js` `class ZF`: Tailwind-based `detectChatType`, `collectAllTurnElements` scroll harvest for `includeAll`, diagnostic `[Grok-AutoScroll]` logs.
-- Version `3.7.0.13`; build + forbidden guards pass; `src/content/content.js` ≡ `content-scripts/content.js`.
-- Manual Chromium/Firefox Grok export still needed by a human with a live session.
-- Next: Task 2 — packaging must rebuild from `src/` every time.
+- `class ZF` only. Role order: testid, exact turn aria-label You/Grok, alignment, `bg-surface-user-bubble`. `.response-content-markdown` is last resort and cannot override those. Dedup is id or document Y (~24px only when text matches), not message text. Scroller prefers `chat-transcript-scroller`.
+- Markdown full export verified for one chat while the manifest still said `3.7.0.13`: `grok_attachment_grief_ai_safety_via_loss_20261004T144936.md`, 9 You and 9 Grok, alternating, chronological, same turns as the page. No ChatOut console errors.
+- Build (9 artifacts) and both forbidden guards passed; `content-scripts/content.js` matches `src`. Manifest then bumped to `3.7.0.14`.
+- Not done: text export, image export (popup stayed busy), identical-text dedup on grok.com (synthetic node check only), virtualized thread, Firefox.
+- Task 1 stays open for those leftovers. Next after that: Task 2 — packaging must rebuild from `src/` every time.

@@ -23,9 +23,9 @@ Make ChatOut reliably work on Chromium-based browsers and Firefox/LibreWolf, whi
 ### P0 - Grok export is broken
 
 - `TODO.md` says Grok export does not capture the full chat and mislabels user/assistant messages.
-- ~~In `src/content/content.js`, Grok implementation `class ZF` currently uses `.message-bubble`.~~ Still uses `.message-bubble` (confirmed valid for current Tailwind Grok UI).
-- ~~Grok `detectChatType()` searches ancestor `.sr-only` text for the literal string `"chatgpt"`~~ **Fixed in Task 1** — now uses `.response-content-markdown`, `bg-surface-l1`, `max-w-none`, plus aria/sr-only fallbacks.
-- ~~`getChatHtmlsAsync()` … does not attempt to expand/scroll~~ **Fixed in Task 1** — `collectAllTurnElements()` scroll-harvests the Grok overflow container.
+- `.message-bubble` is on both user and Grok turns (confirmed 2026-10-04 on grok.com). It is the harvest selector, not a role cue.
+- Role is no longer `.response-content-markdown` / `bg-surface-l1` / `max-w-none`. Both roles contain `.response-content-markdown`. Live cues: `data-testid="user-message"` + `aria-label="You"` + `bg-surface-user-bubble` + parent `items-end`, versus `data-testid="assistant-message"` + `aria-label="Grok"` + parent `items-start`.
+- `collectAllTurnElements()` still scroll-harvests. It prefers `[data-testid="chat-transcript-scroller"]`. Dedup is a real per-turn id or document Y, not message text. The observed thread was not virtualized.
 
 ### P0 - Packaging can ship stale artifacts
 
@@ -59,7 +59,7 @@ Make ChatOut reliably work on Chromium-based browsers and Firefox/LibreWolf, whi
 
 ## Ordered task queue
 
-- [x] **Task 1: Fix Grok full-chat extraction and role labeling.**
+- [ ] **Task 1: Fix Grok full-chat extraction and role labeling.** Markdown full-conversation export of one signed-in chat is verified (turn count, order, You vs Grok). Text export, image export, identical-text dedup, and a virtualized thread are not done.
   - Determine current Grok DOM structure from existing diagnostics/debug harness and robust selectors.
   - Replace the stale `"chatgpt"` role heuristic.
   - Ensure full export collects all conversation turns, including virtualized/off-screen turns when necessary.
@@ -93,43 +93,50 @@ Make ChatOut reliably work on Chromium-based browsers and Firefox/LibreWolf, whi
   - Re-check manifest permissions, runtime APIs, packaging, and manual smoke steps for Chrome/Edge/Brave and Firefox/LibreWolf.
   - Update README/project docs so browser support and verification commands are exact.
 
-## Task 1 completion notes (2026-10-04)
+## Task 1 notes (2026-10-04) — Markdown role check verified for one chat; task not finished
 
-### Changes
+Live DOM was observed on `https://grok.com/c/66972c93-f8ae-5248-824d-45f4b735e498` (Attachment Grief: AI Safety via Loss). Selectors the code now trusts:
 
-- Edited `src/content/content.js` Grok provider (`class ZF`):
-  - `_resolveMessageBubble`, `_findScrollContainer`, `_dedupeKey`, `collectAllTurnElements`
-  - `detectChatType` now prefers Tailwind cues: `.response-content-markdown` / `max-w-none` → assistant (`response`); `bg-surface-l1` → user (`prompt`); aria/sr-only text as fallback; removed `"chatgpt"` sniff
-  - `getChatHtmlsAsync(includeAll=true)` scroll-harvests turns before labeling; selected-export path uses the same `detectChatType`
-  - Thinking-container show/hide behavior preserved
-- Bumped `manifest.json` → `3.7.0.13`
-- Documented in `CHANGELOG.md`
-- Rebuilt via `node scripts/build-extension.mjs` (`content-scripts/content.js` matches `src/`)
+- User turn: `div[data-testid="user-message"]`, `role="article"`, `aria-label="You"`, classes include `message-bubble`, `bg-surface-user-bubble`, `prose-chat`. Parent uses `items-end`. No unique id.
+- Grok turn: `div[data-testid="assistant-message"]`, `role="article"`, `aria-label="Grok"`, classes include `message-bubble`, `prose-chat`. Parent uses `items-start`. No unique id.
+- Both contain `.response-content-markdown`. That class must not decide role. `bg-surface-l1` was not the user cue.
+- Scroller: `div[data-testid="chat-transcript-scroller"]`. This thread was not virtualized (the first user node stayed mounted after scrolling to the bottom). Scroll harvest is still kept for threads that do virtualize.
 
-### Verification
+### Changes (`class ZF` only)
 
-- `node scripts/build-extension.mjs` — pass (9 artifacts)
-- `./scripts/check-forbidden-analytics-patterns.sh` — pass
-- `./scripts/check-forbidden-domains.sh` — pass
-- Synthetic `detectChatType` cases (user `bg-surface-l1`, assistant `response-content-markdown` / `max-w-none`) — pass
-- Artifact check: ZF no longer contains `includes("chatgpt")`; contains `[Grok-AutoScroll]`
-- **Manual browser verification not run in this environment** (no live grok.com session). Required next:
+- `detectChatType` order: `data-testid` `user-message` / `assistant-message`, then exact `aria-label` `You` / `Grok` on the turn (not a multi-bubble ancestor), then alignment (`items-end` / `justify-end` / `self-end` / `ml-auto` vs `items-start` / `justify-start`), then `bg-surface-user-bubble`. `.response-content-markdown` is last resort only and cannot override those cues. `message-bubble` is not a role cue.
+- Dedup is no longer message text. Identity is a real per-turn id if present; otherwise document Y (`getBoundingClientRect().top + scrollTop`) with about 24px tolerance only when the text also matches. `user-message` / `assistant-message` are not dedup ids.
+- `_findScrollContainer` prefers `[data-testid="chat-transcript-scroller"]` before the generic overflow heuristic.
+- Full Markdown still uses `getChatHtmlsAsync` → `collectAllTurnElements`. Other providers were not edited.
+- Manifest bumped `3.7.0.13` → `3.7.0.14` after the live export. The export below was the content script while the manifest still said `3.7.0.13`.
 
-  1. Load unpacked `3.7.0.13` at `chrome://extensions` (and Firefox `about:debugging` if available).
-  2. Open a long Grok chat (`https://grok.com/c/...`) with ≥1 viewport of history.
-  3. Export full Markdown: confirm turn count matches the UI and labels alternate You / Grok correctly.
-  4. Spot-check image export still works.
-  5. Optional console: look for `[Grok-AutoScroll] DONE collected N`.
+### Verification actually performed
+
+- `node scripts/build-extension.mjs` — 9 artifacts.
+- `./scripts/check-forbidden-analytics-patterns.sh` — pass.
+- `./scripts/check-forbidden-domains.sh` — pass.
+- `content-scripts/content.js` matches `src/content/content.js`.
+- Chrome developer mode, unpacked load of that build (manifest still `3.7.0.13`), conversation reloaded, **full Markdown only**.
+- File `grok_attachment_grief_ai_safety_via_loss_20261004T144936.md`: 9 `## You asked:` and 9 `## Grok Replied:`, alternating, chronological. A browser pass found the same turns on the page. No ChatOut console errors (only unrelated Grok CSP/403s).
+- Synthetic node check only for position dedup (two identical texts at different Y kept; ~24px same text kept once). Not a repo unit suite.
+
+### Not verified
+
+- Text export and image export were not completed (popup stayed busy).
+- This chat had no two identical user messages, so the new dedup was not proven on grok.com.
+- This thread was not virtualized, so scroll harvest was not shown remounting discarded turns.
+- Firefox was not used.
 
 ### Remaining risks
 
-- Grok may virtualize in a way that programmatic scroll does not remount older turns (same class of issue ChatGPT hit); if manual test still truncates, consider a Grok REST/API harvest path later.
-- Class names (`bg-surface-l1`, `response-content-markdown`) can drift; keep title-debug / console probes handy.
-- Nested / thinking-only bubbles could still confuse edge cases despite nested-bubble skip.
+- Virtualized Grok threads may still truncate if programmatic scroll does not remount older turns.
+- Identical short turns closer than ~24px with the same text can still collapse. Wider than that they are kept. Not proven live.
+- Last-resort `.response-content-markdown` can still mark a turn assistant if testid, aria-label, alignment, and `bg-surface-user-bubble` are all missing.
+- Text and image export paths were not exercised on this build.
 
 ### Next task
 
-**Task 2: Make packaging rebuild from source every time.**
+Finish Task 1 leftovers (text, image, a virtualized thread, two identical user texts), then **Task 2: packaging must rebuild from source every time.**
 
 ## Completion standard
 
@@ -145,4 +152,4 @@ Do not mark the project task complete until:
 
 ## Last update
 
-2026-10-04: Task 1 implemented (Grok role labeling + scroll harvest). Version `3.7.0.13`. Commit `cdfdc51540e82f4635b06ba809c739316bee05e1`. Next: Task 2 packaging rebuild-from-source.
+2026-10-04: Grok Markdown role check verified on one signed-in chat (`66972c93-f8ae-5248-824d-45f4b735e498`) against the content script at manifest `3.7.0.13` (9 You / 9 Grok, alternating). Manifest then bumped to `3.7.0.14`. Text, image, identical-text dedup, and virtualized harvest are not done. Task 1 stays open. Next after those leftovers: Task 2.

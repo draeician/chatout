@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.14] - 2026-10-04
+
+### Fixed
+- Grok roles follow the live turn: `data-testid="user-message"` / `aria-label="You"` (and `items-end` / `bg-surface-user-bubble`) versus `assistant-message` / `aria-label="Grok"` (and `items-start`). Both sides contain `.response-content-markdown`, so that class is no longer the role decision.
+- Grok full-export dedup no longer collapses turns that share the same text. Identity is a real per-turn id when one exists; otherwise document Y, with about 24px of tolerance only when the text also matches. `user-message` / `assistant-message` are role selectors, not ids.
+- Grok scroll harvest prefers `[data-testid="chat-transcript-scroller"]`.
+
+The signed-in Markdown check of this build was done while the manifest still said `3.7.0.13` (content script only; the version number itself was bumped after that export).
+
 ## [3.7.0.13] - 2026-10-04
 
 ### Fixed
