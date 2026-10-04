@@ -145,4 +145,4 @@ Do not mark the project task complete until:
 
 ## Last update
 
-2026-10-04: Task 1 implemented (Grok role labeling + scroll harvest). Version `3.7.0.13`. Next: Task 2 packaging rebuild-from-source.
+2026-10-04: Task 1 implemented (Grok role labeling + scroll harvest). Version `3.7.0.13`. Commit `cdfdc51540e82f4635b06ba809c739316bee05e1`. Next: Task 2 packaging rebuild-from-source.
