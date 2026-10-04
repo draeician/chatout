@@ -59,7 +59,7 @@ Make ChatOut reliably work on Chromium-based browsers and Firefox/LibreWolf, whi
 
 ## Ordered task queue
 
-- [ ] **Task 1: Fix Grok full-chat extraction and role labeling.** Markdown full-conversation export of one signed-in chat is verified (turn count, order, You vs Grok). Text export, image export, identical-text dedup, and a virtualized thread are not done.
+- [ ] **Task 1: Fix Grok full-chat extraction and role labeling.** Markdown and text full-conversation exports of one signed-in chat are verified (turn count, order, You vs Grok). Image export, identical-text dedup, and a virtualized thread are not done.
   - Determine current Grok DOM structure from existing diagnostics/debug harness and robust selectors.
   - Replace the stale `"chatgpt"` role heuristic.
   - Ensure full export collects all conversation turns, including virtualized/off-screen turns when necessary.
@@ -116,13 +116,14 @@ Live DOM was observed on `https://grok.com/c/66972c93-f8ae-5248-824d-45f4b735e49
 - `./scripts/check-forbidden-analytics-patterns.sh` — pass.
 - `./scripts/check-forbidden-domains.sh` — pass.
 - `content-scripts/content.js` matches `src/content/content.js`.
-- Chrome developer mode, unpacked load of that build (manifest still `3.7.0.13`), conversation reloaded, **full Markdown only**.
+- Chrome developer mode, unpacked load of that build (manifest still `3.7.0.13`), conversation reloaded.
 - File `grok_attachment_grief_ai_safety_via_loss_20261004T144936.md`: 9 `## You asked:` and 9 `## Grok Replied:`, alternating, chronological. A browser pass found the same turns on the page. No ChatOut console errors (only unrelated Grok CSP/403s).
+- Text export of the same conversation: `grok_attachment_grief_ai_safety_via_loss_20261004T145416.txt`, 9 `YOU ASKED` and 9 `GROK REPLIED`. First turn is the user's Attachment Axiom / companion prompt. A duplicate retry file `grok_attachment_grief_ai_safety_via_loss_20261004T145110.txt` also exists.
 - Synthetic node check only for position dedup (two identical texts at different Y kept; ~24px same text kept once). Not a repo unit suite.
 
 ### Not verified
 
-- Text export and image export were not completed (popup stayed busy).
+- Image export was available in the popup but stayed on Exporting and produced no file.
 - This chat had no two identical user messages, so the new dedup was not proven on grok.com.
 - This thread was not virtualized, so scroll harvest was not shown remounting discarded turns.
 - Firefox was not used.
@@ -132,11 +133,11 @@ Live DOM was observed on `https://grok.com/c/66972c93-f8ae-5248-824d-45f4b735e49
 - Virtualized Grok threads may still truncate if programmatic scroll does not remount older turns.
 - Identical short turns closer than ~24px with the same text can still collapse. Wider than that they are kept. Not proven live.
 - Last-resort `.response-content-markdown` can still mark a turn assistant if testid, aria-label, alignment, and `bg-surface-user-bubble` are all missing.
-- Text and image export paths were not exercised on this build.
+- Image export was offered in the popup and did not finish (no file). Text export of this one chat did finish.
 
 ### Next task
 
-Finish Task 1 leftovers (text, image, a virtualized thread, two identical user texts), then **Task 2: packaging must rebuild from source every time.**
+Finish Task 1 leftovers (image export, a virtualized thread, two identical user texts), then **Task 2: packaging must rebuild from source every time.**
 
 ## Completion standard
 
@@ -152,4 +153,4 @@ Do not mark the project task complete until:
 
 ## Last update
 
-2026-10-04: Grok Markdown role check verified on one signed-in chat (`66972c93-f8ae-5248-824d-45f4b735e498`) against the content script at manifest `3.7.0.13` (9 You / 9 Grok, alternating). Manifest then bumped to `3.7.0.14`. Text, image, identical-text dedup, and virtualized harvest are not done. Task 1 stays open. Next after those leftovers: Task 2.
+2026-10-04: Same chat, text export also succeeded (`grok_attachment_grief_ai_safety_via_loss_20261004T145416.txt`, 9 YOU ASKED / 9 GROK REPLIED; first turn is the user's Attachment Axiom / companion prompt). Duplicate retry `20261004T145110.txt` exists. Image export stayed on Exporting and wrote no file. Identical-text dedup and virtualization were not shown. Task 1 stays open. No version bump in this docs note.

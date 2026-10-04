@@ -9,8 +9,8 @@ Fix the known Grok export regression and harden ChatOut so releases cannot silen
 
 ## Acceptance criteria
 
-- [x] Grok full Markdown export of one signed-in chat includes that conversation in order. *(https://grok.com/c/66972c93-f8ae-5248-824d-45f4b735e498 only. Not virtualized. Text/image not done. Identical-text dedup not proven live.)*
-- [x] Grok user and assistant turns are labeled correctly in that Markdown export. *(9 `## You asked:` and 9 `## Grok Replied:`, alternating. Not a text or image export.)*
+- [x] Grok full Markdown export of one signed-in chat includes that conversation in order. *(https://grok.com/c/66972c93-f8ae-5248-824d-45f4b735e498 only. Not virtualized. Image export not done. Identical-text dedup not proven live.)*
+- [x] Grok user and assistant turns are labeled correctly in that Markdown export and in the later text export of the same chat. *(Markdown: 9 `## You asked:` / 9 `## Grok Replied:`. Text: `grok_attachment_grief_ai_safety_via_loss_20261004T145416.txt`, 9 YOU ASKED / 9 GROK REPLIED, first turn is the user's Attachment Axiom / companion prompt. Image export not done.)*
 - [ ] Chromium packaging always rebuilds from `src/`.
 - [ ] Firefox packaging always rebuilds from `src/`.
 - [ ] All shipped source-backed debug scripts are in the build output map.
@@ -38,5 +38,6 @@ Use `HANDOFF.md` as the canonical running state for OpenCode/ChatGPT coordinatio
 - `class ZF` only. Role order: testid, exact turn aria-label You/Grok, alignment, `bg-surface-user-bubble`. `.response-content-markdown` is last resort and cannot override those. Dedup is id or document Y (~24px only when text matches), not message text. Scroller prefers `chat-transcript-scroller`.
 - Markdown full export verified for one chat while the manifest still said `3.7.0.13`: `grok_attachment_grief_ai_safety_via_loss_20261004T144936.md`, 9 You and 9 Grok, alternating, chronological, same turns as the page. No ChatOut console errors.
 - Build (9 artifacts) and both forbidden guards passed; `content-scripts/content.js` matches `src`. Manifest then bumped to `3.7.0.14`.
-- Not done: text export, image export (popup stayed busy), identical-text dedup on grok.com (synthetic node check only), virtualized thread, Firefox.
+- Text export of the same conversation succeeded: `grok_attachment_grief_ai_safety_via_loss_20261004T145416.txt` (9 YOU ASKED, 9 GROK REPLIED, first turn is the user's Attachment Axiom / companion prompt). Duplicate retry `grok_attachment_grief_ai_safety_via_loss_20261004T145110.txt` also exists.
+- Not done: image export (popup showed Exporting and produced no file), identical-text dedup on grok.com (synthetic node check only), virtualized thread, Firefox.
 - Task 1 stays open for those leftovers. Next after that: Task 2 — packaging must rebuild from `src/` every time.
