@@ -10,7 +10,9 @@
       {
          "js": [
             "content-scripts/config.js",
-            "content-scripts/content.js"
+            "content-scripts/content.js",
+            "content-scripts/project-archive-lib.js",
+            "content-scripts/project-archive.js"
          ],
          "matches": [
             "https://aistudio.google.com/*",
@@ -95,10 +97,11 @@
       "cookies",
       "declarativeNetRequest",
       "declarativeNetRequestWithHostAccess",
-      "scripting"
+      "scripting",
+      "downloads"
    ],
    "update_url": "https://clients2.google.com/service/update2/crx",
-   "version": "3.7.0.12",
+   "version": "3.7.0.13",
    "web_accessible_resources": [
       {
          "matches": [

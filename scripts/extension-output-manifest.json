@@ -1,6 +1,8 @@
 {
   "background.js": "src/background/index.js",
   "content-scripts/content.js": "src/content/content.js",
+  "content-scripts/project-archive-lib.js": "src/content/project-archive-lib.js",
+  "content-scripts/project-archive.js": "src/content/project-archive.js",
   "content-scripts/start.js": "src/content/start.js",
   "content-scripts/config.js": "src/content/config.js",
   "inject-web.js": "src/shared/inject-web.js",

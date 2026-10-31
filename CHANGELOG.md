@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.13] - 2026-10-31
+
+### Added
+- **Archive project** on a ChatGPT project, a Claude project, or a Gemini notebook. The on-page button exports every chat in that project into one local zip: `<project>/<date>_<title>_<id>.md`, using the same per-chat Markdown path as a normal export. A progress line and a final “Exported N, failed M” summary stay on the page. A chat that fails is skipped and named in `<project>/_index.md`; the rest still save.
+- Headless checks: `make test-browser` or `npm run test:e2e` loads the extension and runs single-chat export plus project archive against saved pages and mocked site responses. `node tests/browser/live-archive.mjs` can repeat that against a real logged-in Chrome profile. Fixture refresh steps are in `tests/browser/CAPTURE.md`.
+
 ## [3.7.0.12] - 2026-07-29
 
 ### Fixed

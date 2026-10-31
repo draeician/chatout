@@ -26,7 +26,7 @@ Durable scope, stack, and conventions for **ai-export-drae-chrome**.
 - **CI / guards**:
   - `./scripts/check-forbidden-analytics-patterns.sh`
   - `./scripts/check-forbidden-domains.sh`
-- **Tests**: no unit/integration test suite configured; verify via build + analytics/domain guards + manual load of unpacked extension at `chrome://extensions`
+- **Tests**: `make test-browser` (unit tests + headless Playwright against HTML/API fixtures). Optional logged-in run: `node tests/browser/live-archive.mjs` (see `tests/browser/CAPTURE.md`)
 - **Install / lint**: no package manager or formal linter; edit `src/`, rebuild, reload extension
 
 ## Architecture and conventions

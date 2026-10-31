@@ -18,6 +18,12 @@ _metadata/
 # Release build output (see scripts/package-extension.sh)
 dist/
 
+# Local browser-test tooling and private fixture captures
+node_modules/
+test-results/
+playwright-report/
+tests/browser/fixtures/captured/
+
 # Crules specific (tool-generated rule projections; canonical is AGENTS.md + .crules + .grok)
 .cursor/rules/*.mdc
 .claude/rules/*.md

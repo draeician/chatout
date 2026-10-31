@@ -1,0 +1,14 @@
+{
+  "name": "chatout",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.mjs",
+    "test:e2e": "node scripts/build-extension.mjs && node tests/browser/run.mjs",
+    "test:live": "node tests/browser/live-archive.mjs",
+    "test:browser": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}
