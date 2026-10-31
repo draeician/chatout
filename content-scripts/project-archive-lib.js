@@ -26,8 +26,8 @@
     return raw.slice(-8);
   }
 
-  function formatDay(value) {
-    if (value == null || value === "") return "";
+  function toDate(value) {
+    if (value == null || value === "") return null;
     let d;
     if (value instanceof Date) d = value;
     else if (typeof value === "number") d = new Date(value < 1e12 ? value * 1000 : value);
@@ -38,7 +38,17 @@
         d = new Date(n < 1e12 ? n * 1000 : n);
       } else d = new Date(s);
     }
-    if (Number.isNaN(d.getTime())) return "";
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }
+
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function formatDay(value) {
+    const d = toDate(value);
+    if (!d) return "";
     const y = d.getUTCFullYear();
     const m = String(d.getUTCMonth() + 1).padStart(2, "0");
     const day = String(d.getUTCDate()).padStart(2, "0");
@@ -243,9 +253,20 @@
     return out;
   }
 
+  function formatStamp(value) {
+    const d = value == null || value === "" ? new Date() : toDate(value);
+    if (!d) return "";
+    return d.getFullYear() +
+      pad2(d.getMonth() + 1) +
+      pad2(d.getDate()) + "-" +
+      pad2(d.getHours()) +
+      pad2(d.getMinutes()) +
+      pad2(d.getSeconds());
+  }
+
   function zipDownloadName(projectName, when) {
-    const day = formatDay(when || new Date()) || "export";
-    return "chatout_" + sanitizeSegment(projectName, "project") + "_" + day.replace(/-/g, "") + ".zip";
+    const stamp = formatStamp(when) || "export";
+    return "chatout_" + sanitizeSegment(projectName, "project") + "_" + stamp + ".zip";
   }
 
   const api = {
