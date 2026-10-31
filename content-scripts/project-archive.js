@@ -388,7 +388,7 @@
     return { items: items, note: listed.note || "" };
   }
 
-  async function renderGrok(chat, pause) {
+  async function renderGrok(chat, pause, ctx) {
     const debug = window.__AI_EXPORTER_DEBUG__;
     const base = location.origin + "/rest/app-chat/conversations/" + encodeURIComponent(chat.id);
     const nodeRes = await fetchRetry(base + "/response-node?includeThreads=true", { credentials: "include", headers: grokHeaders(false) }, pause);
@@ -408,6 +408,7 @@
       const json = await res.json();
       (json.responses || []).forEach(function (r) { responses.push(r); });
     }
+    if (ctx) ctx.raw = { responses: responses };
     const order = new Map(ids.map(function (id, i) { return [id, i]; }));
     responses.sort(function (a, b) {
       const oa = order.has(a.responseId) ? order.get(a.responseId) : 1e9;
@@ -425,7 +426,207 @@
     return debug.markdownFromHtmlNodes(debug.htmlNodesFromTurns(turns));
   }
 
+  /* ---- Images and attachments (optional, popup toggle "Include images and attachments") ---- */
+  const FILE_CAP = 50 * 1024 * 1024;
+  const ARCHIVE_FILE_CAP = 1024 * 1024 * 1024;
+
+  function readIncludeFiles() {
+    return new Promise(function (resolve) {
+      try {
+        if (!api || !api.storage || !api.storage.local) { resolve(false); return; }
+        const r = api.storage.local.get("chatoutIncludeFiles", function (v) { resolve(!!(v && v.chatoutIncludeFiles)); });
+        if (r && typeof r.then === "function") r.then(function (v) { resolve(!!(v && v.chatoutIncludeFiles)); }, function () { resolve(false); });
+      } catch (e) { resolve(false); }
+    });
+  }
+
+  function base64ToBytes(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  function fileNameFromUrl(url) {
+    try {
+      const last = new URL(url, location.href).pathname.split("/").filter(Boolean).pop() || "";
+      return decodeURIComponent(last);
+    } catch (e) { return ""; }
+  }
+
+  function safeFileName(name, fallback, used) {
+    let base = String(name || "").split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "_").replace(/^\.+/, "").trim();
+    if (!base) base = fallback;
+    if (base.length > 120) {
+      const dot = base.lastIndexOf(".");
+      const ext = dot > 0 && base.length - dot <= 10 ? base.slice(dot) : "";
+      base = base.slice(0, 120 - ext.length) + ext;
+    }
+    let out = base;
+    let n = 2;
+    while (used.has(out.toLowerCase())) {
+      const dot = base.lastIndexOf(".");
+      out = dot > 0 ? base.slice(0, dot) + "_" + n + base.slice(dot) : base + "_" + n;
+      n += 1;
+    }
+    used.add(out.toLowerCase());
+    return out;
+  }
+
+  async function fetchBytes(url, headers, pause) {
+    checkCancel();
+    let abs;
+    try { abs = new URL(url, location.href); } catch (e) { throw new Error("bad url"); }
+    if (abs.origin === location.origin) {
+      const res = await fetchRetry(abs.href, { credentials: "include", headers: headers || {} }, pause);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const len = Number(res.headers.get("content-length"));
+      if (Number.isFinite(len) && len > FILE_CAP) throw new Error("larger than 50 MB, skipped");
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.length > FILE_CAP) throw new Error("larger than 50 MB, skipped");
+      return bytes;
+    }
+    if (!api || !api.runtime || !api.runtime.sendMessage) throw new Error("cannot fetch other sites");
+    const resp = await new Promise(function (resolve, reject) {
+      api.runtime.sendMessage({ type: "chatout-fetch-file", url: abs.href, cap: FILE_CAP }, function (r) {
+        const err = api.runtime.lastError;
+        if (err) reject(new Error(err.message)); else resolve(r);
+      });
+    });
+    if (!resp || !resp.ok) throw new Error((resp && resp.error) || "download failed");
+    return base64ToBytes(resp.base64 || "");
+  }
+
+  /* Each ref: { name, url?, text?, resolve?(): Promise<url>, match?: [strings to rewrite in markdown] } */
+  function attachmentRefs(provider, raw, markdown, ctx) {
+    const refs = [];
+    const data = raw || {};
+    if (provider === "chatgpt" && data.mapping) {
+      Object.keys(data.mapping).forEach(function (key) {
+        const msg = data.mapping[key] && data.mapping[key].message;
+        if (!msg) return;
+        const seen = new Set();
+        const add = function (id, name, pointer) {
+          if (!id || seen.has(id)) return;
+          seen.add(id);
+          refs.push({
+            name: name || id,
+            match: [pointer || "", id].filter(Boolean),
+            resolve: async function () {
+              const res = await fetchRetry(location.origin + "/backend-api/files/" + encodeURIComponent(id) + "/download", { credentials: "include", headers: ctx.headers || {} }, 0);
+              if (!res.ok) throw new Error("file link HTTP " + res.status);
+              const j = await res.json();
+              if (!j.download_url) throw new Error("no download link");
+              return { url: j.download_url, name: j.file_name || name };
+            }
+          });
+        };
+        const parts = (msg.content && msg.content.parts) || [];
+        parts.forEach(function (part) {
+          if (part && typeof part === "object" && part.asset_pointer) {
+            const pointer = String(part.asset_pointer);
+            add(pointer.replace(/^[a-z-]+:\/\//, ""), "", pointer);
+          }
+        });
+        ((msg.metadata && msg.metadata.attachments) || []).forEach(function (a) { if (a) add(a.id, a.name, ""); });
+      });
+    }
+    if (provider === "claude") {
+      (data.chat_messages || data.messages || []).forEach(function (msg) {
+        (msg.files_v2 || msg.files || []).forEach(function (f) {
+          if (!f) return;
+          const url = f.preview_url || (f.document_asset && f.document_asset.url) || (f.preview_asset && f.preview_asset.url) || f.thumbnail_url ||
+            (f.file_uuid && ctx.org ? "/api/" + encodeURIComponent(ctx.org) + "/files/" + encodeURIComponent(f.file_uuid) + "/preview" : "");
+          if (url) refs.push({ name: f.file_name || f.file_uuid, url: url, match: [url] });
+        });
+        (msg.attachments || []).forEach(function (a) {
+          if (a && a.extracted_content != null) {
+            const name = String(a.file_name || "pasted_text");
+            refs.push({ name: /\.[a-z0-9]{1,6}$/i.test(name) ? name : name + ".txt", text: String(a.extracted_content) });
+          }
+        });
+      });
+    }
+    if (provider === "grok") {
+      const asset = function (u) { return /^https?:/i.test(u) ? u : "https://assets.grok.com/" + String(u).replace(/^\/+/, ""); };
+      (data.responses || []).forEach(function (r) {
+        (r.generatedImageUrls || []).concat(r.imageAttachments || []).forEach(function (u) {
+          if (typeof u === "string" && u) refs.push({ name: fileNameFromUrl(asset(u)) || "image.png", url: asset(u), match: [u, asset(u)] });
+        });
+        (r.fileAttachmentsMetadata || r.fileAttachments || []).forEach(function (f) {
+          if (f && typeof f === "object" && f.fileUri) refs.push({ name: f.fileName || fileNameFromUrl(f.fileUri), url: asset(f.fileUri), match: [f.fileUri, asset(f.fileUri)] });
+        });
+      });
+    }
+    // Every site: images linked in the markdown itself (covers Gemini).
+    const known = new Set();
+    refs.forEach(function (r) { (r.match || []).forEach(function (m) { known.add(m); }); if (r.url) known.add(r.url); });
+    const re = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g;
+    let m;
+    while ((m = re.exec(String(markdown || "")))) {
+      if (known.has(m[1])) continue;
+      known.add(m[1]);
+      refs.push({ name: fileNameFromUrl(m[1]) || "image", url: m[1], match: [m[1]] });
+    }
+    return refs;
+  }
+
+  /* Download a chat's files into <stem>_files/ and point the markdown at them.
+     Never throws for a file; failures are returned for _index.md. */
+  async function withAttachments(provider, chat, ctx, markdown, mdPath, pause, budget) {
+    const refs = attachmentRefs(provider, ctx.raw, markdown, ctx);
+    if (!refs.length) return { markdown: markdown, files: [], failures: [] };
+    const dir = mdPath.replace(/\.md$/i, "") + "_files";
+    const rel = dir.split("/").pop();
+    const used = new Set();
+    const files = [];
+    const failures = [];
+    const saved = [];
+    let md = String(markdown);
+    for (let i = 0; i < refs.length; i += 1) {
+      const ref = refs[i];
+      checkCancel();
+      try {
+        let bytes;
+        let name = ref.name;
+        if (ref.text != null) {
+          bytes = new TextEncoder().encode(ref.text);
+        } else {
+          let url = ref.url;
+          if (ref.resolve) {
+            const got = await ref.resolve();
+            url = got.url;
+            if (got.name) name = got.name;
+          }
+          if (budget.used >= ARCHIVE_FILE_CAP) throw new Error("archive file limit (1 GB) reached, skipped");
+          bytes = await fetchBytes(url, provider === "grok" ? grokHeaders(false) : null, pause);
+          if (ref.url && !ref.match) ref.match = [ref.url];
+        }
+        if (budget.used + bytes.length > ARCHIVE_FILE_CAP) throw new Error("archive file limit (1 GB) reached, skipped");
+        budget.used += bytes.length;
+        const fname = safeFileName(name, "file_" + (i + 1), used);
+        files.push({ name: dir + "/" + fname, data: bytes });
+        const local = rel + "/" + encodeURI(fname).replace(/[()]/g, function (c) { return c === "(" ? "%28" : "%29"; });
+        const token = "\u0000chatout-file-" + i + "\u0000";
+        (ref.match || []).slice().sort(function (x, y) { return y.length - x.length; }).forEach(function (s) { if (s && s.length > 6) md = md.split(s).join(token); });
+        saved.push({ name: fname, local: local, token: token });
+      } catch (e) {
+        if (cancelRequested) throw e;
+        failures.push({ id: chat.id, title: chat.title, file: ref.name, error: String((e && e.message) || e).slice(0, 200) });
+      }
+      if (pause) await lib.sleep(Math.min(pause, 250));
+    }
+    saved.forEach(function (sv) { md = md.split(sv.token).join(sv.local); });
+    if (saved.length || failures.length) {
+      md += "\n\n## Attachments\n\n";
+      saved.forEach(function (s) { md += "- [" + s.name + "](" + s.local + ")\n"; });
+      failures.forEach(function (f) { md += "- " + f.file + " (not saved: " + f.error + ")\n"; });
+    }
+    return { markdown: md, files: files, failures: failures };
+  }
+
   async function renderChat(provider, chat, ctx, pause) {
+    ctx.raw = null;
     const debug = window.__AI_EXPORTER_DEBUG__;
     if (!debug) throw new Error("exporter unavailable");
     if (provider === "chatgpt") {
@@ -437,6 +638,7 @@
       if (!res.ok) throw new Error("conversation HTTP " + res.status);
       let data = await res.json();
       if (data && data.conversation && data.conversation.mapping) data = data.conversation;
+      ctx.raw = data;
       if (typeof debug.chatGptMarkdownFromConversation !== "function") throw new Error("ChatGPT exporter unavailable");
       return debug.chatGptMarkdownFromConversation(data);
     }
@@ -447,6 +649,7 @@
       }, pause);
       if (!res.ok) throw new Error("conversation HTTP " + res.status);
       const data = await res.json();
+      ctx.raw = data;
       const messages = data.chat_messages || data.messages || [];
       const turns = [];
       messages.forEach(function (msg) {
@@ -479,7 +682,7 @@
       if (typeof debug.geminiMarkdownFromRpc !== "function") throw new Error("Gemini exporter unavailable");
       return debug.geminiMarkdownFromRpc(await res.text());
     }
-    if (provider === "grok") return renderGrok(chat, pause);
+    if (provider === "grok") return renderGrok(chat, pause, ctx);
     throw new Error("unsupported provider");
   }
 
@@ -498,7 +701,7 @@
     return lines.join("\n");
   }
 
-  function indexMarkdown(projectName, rows, failures, listNote) {
+  function indexMarkdown(projectName, rows, failures, listNote, fileFailures) {
     const lines = [
       "# " + projectName,
       "",
@@ -515,6 +718,10 @@
     failures.forEach(function (failure) {
       lines.push("- " + (failure.title || failure.id) + " (" + failure.id + "): " + failure.error);
     });
+    if (fileFailures && fileFailures.length) {
+      lines.push("", "## Files not saved", "");
+      fileFailures.forEach(function (f) { lines.push("- " + (f.title || f.id) + ": " + f.file + " — " + f.error); });
+    }
     lines.push("");
     return lines.join("\n");
   }
@@ -647,13 +854,22 @@
 
       const paths = lib.buildChatPaths(projectName, chats, "md");
       const files = [];
+      const fileFailures = [];
+      const budget = { used: 0 };
+      ctx.includeFiles = await readIncludeFiles();
       const rows = [];
       for (let i = 0; i < chats.length; i += 1) {
         const chat = chats[i];
         setProgress("Archiving \"" + projectName + "\" — " + (i + 1) + "/" + chats.length + " — " + chat.title);
         try {
-          const markdown = await renderChat(project.provider, chat, ctx, pause);
+          let markdown = await renderChat(project.provider, chat, ctx, pause);
           if (!markdown || !String(markdown).trim()) throw new Error("empty export");
+          if (ctx.includeFiles) {
+            const att = await withAttachments(project.provider, chat, ctx, markdown, paths[i], pause, budget);
+            markdown = att.markdown;
+            att.files.forEach(function (f) { files.push(f); });
+            att.failures.forEach(function (f) { fileFailures.push(f); });
+          }
           files.push({ name: paths[i], text: preface(projectName, chat, project.provider) + markdown });
           rows.push({ path: paths[i], title: chat.title, id: chat.id });
         } catch (e) {
@@ -668,7 +884,7 @@
       }
 
       const folder = paths[0] ? paths[0].split("/")[0] : lib.sanitizeSegment(projectName, "project");
-      files.push({ name: folder + "/_index.md", text: indexMarkdown(projectName, rows, failures, listNote) });
+      files.push({ name: folder + "/_index.md", text: indexMarkdown(projectName, rows, failures, listNote, fileFailures) });
       const zipName = lib.zipDownloadName(project.provider, projectName, new Date());
       setProgress("Saving " + rows.length + " chat" + (rows.length === 1 ? "" : "s") + "…");
       checkCancel();
@@ -887,6 +1103,9 @@
       }
 
       const files = [];
+      const budget = { used: 0 };
+      let fileFailureCount = 0;
+      ctx.includeFiles = await readIncludeFiles();
       let done = 0;
       let exported = 0;
       for (const w of work) {
@@ -894,13 +1113,20 @@
         const paths = lib.buildChatPaths(g.folder, w.chats, "md").map(function (p) { return g.folder + p.slice(p.indexOf("/")); });
         const rows = [];
         const groupFailures = [];
+        const groupFileFailures = [];
         for (let i = 0; i < w.chats.length; i += 1) {
           const chat = w.chats[i];
           done += 1;
           setProgress("Archiving everything — " + done + "/" + total + " — " + g.name + " — " + chat.title);
           try {
-            const markdown = await renderChat(site, chat, ctx, pause);
+            let markdown = await renderChat(site, chat, ctx, pause);
             if (!markdown || !String(markdown).trim()) throw new Error("empty export");
+            if (ctx.includeFiles) {
+              const att = await withAttachments(site, chat, ctx, markdown, paths[i], pause, budget);
+              markdown = att.markdown;
+              att.files.forEach(function (f) { files.push(f); });
+              att.failures.forEach(function (f) { groupFileFailures.push(f); fileFailureCount += 1; });
+            }
             files.push({ name: paths[i], text: preface(g.name, chat, site) + markdown });
             rows.push({ path: paths[i], title: chat.title, id: chat.id });
           } catch (e) {
@@ -915,7 +1141,7 @@
         exported += rows.length;
         g.exported = rows.length;
         g.failed = groupFailures.length;
-        files.push({ name: g.folder + "/_index.md", text: indexMarkdown(g.name, rows, groupFailures, "") });
+        files.push({ name: g.folder + "/_index.md", text: indexMarkdown(g.name, rows, groupFailures, "", groupFileFailures) });
       }
 
       const top = [
@@ -925,6 +1151,7 @@
         "- Exported: " + exported,
         "- Failed: " + failures.length,
         "- Projects: " + groups.length,
+        "- Images and attachments: " + (ctx.includeFiles ? "included (" + fileFailureCount + " not saved, see each folder's _index.md)" : "not included"),
         "",
         "## Folders",
         ""

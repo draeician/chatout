@@ -22,6 +22,8 @@
         "<input type='checkbox' data-scope='" + m.scope + "' aria-label='" + m.label + "'> <span>" + m.label +
         "<br><small style='color:#6b7280'>" + m.hint + "</small></span></label>";
     }).join("") +
+    "<label style='display:flex;gap:6px;align-items:center;margin:6px 0 2px;cursor:pointer' title='Saved; applies to every archive'>" +
+    "<input type='checkbox' id='chatout-include-files' aria-label='Include images and attachments'> <span>Include images and attachments</span></label>" +
     "<button type='button' id='chatout-archive-all-cancel' hidden style='margin-top:6px'>Cancel</button>" +
     "<div id='chatout-archive-all-confirm' role='dialog' aria-modal='true' aria-labelledby='chatout-archive-all-confirm-text' hidden style='margin-top:6px;padding:8px;border:1px solid #f59e0b;border-radius:8px;background:#fffbeb'>" +
     "<div id='chatout-archive-all-confirm-text'></div>" +
@@ -29,7 +31,14 @@
     "<button type='button' id='chatout-archive-all-no'>Cancel</button><button type='button' id='chatout-archive-all-yes'>Archive</button></div></div>" +
     "<div id='chatout-archive-all-status' role='status' aria-live='polite' style='margin-top:4px;color:#374151'></div>";
   const statusEl = box.querySelector("#chatout-archive-all-status");
-  const inputs = Array.prototype.slice.call(box.querySelectorAll("input[type=checkbox]"));
+  const inputs = Array.prototype.slice.call(box.querySelectorAll("input[type=checkbox][data-scope]"));
+  const filesToggle = box.querySelector("#chatout-include-files");
+  if (api.storage && api.storage.local) {
+    api.storage.local.get("chatoutIncludeFiles", function (v) { filesToggle.checked = !!(v && v.chatoutIncludeFiles); box.setAttribute("data-files-ready", "1"); });
+    filesToggle.addEventListener("change", function () {
+      api.storage.local.set({ chatoutIncludeFiles: filesToggle.checked }, function () { box.setAttribute("data-files-saved", String(filesToggle.checked)); });
+    });
+  }
   const cancelBtn = box.querySelector("#chatout-archive-all-cancel");
   const confirmEl = box.querySelector("#chatout-archive-all-confirm");
   const confirmText = box.querySelector("#chatout-archive-all-confirm-text");
