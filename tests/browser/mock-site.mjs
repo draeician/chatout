@@ -213,6 +213,49 @@ function handleClaude(url) {
   return null;
 }
 
+const GROK_K1 = "grok-k1-1111";
+const GROK_K2 = "grok-k2-2222";
+const GROK_K3 = "grok-k3-3333";
+const grokTexts = {
+  [GROK_K1]: ["Lab question", "Lab answer from Grok."],
+  [GROK_K2]: ["Loose Grok question", "Loose Grok answer."]
+};
+
+function handleGrok(url, request) {
+  const p = url.pathname;
+  if (p === "/" || p.startsWith("/c/")) return page("grok-project.html");
+  if (p === "/project/ws-fixture") return page("grok-project.html");
+  if (p === "/rest/workspaces") return json({ workspaces: [{ workspaceId: "ws-fixture", name: "Grok Lab" }] });
+  if (p === "/rest/app-chat/conversations") {
+    if (url.searchParams.get("workspaceId") === "ws-fixture") {
+      return json({ conversations: [{ conversationId: GROK_K1, title: "Lab chat", modifyTime: "2024-07-01T00:00:00Z", workspaces: ["ws-fixture"] }] });
+    }
+    if (!url.searchParams.get("pageToken")) {
+      return json({ conversations: [
+        { conversationId: GROK_K1, title: "Lab chat", modifyTime: "2024-07-01T00:00:00Z", workspaces: ["ws-fixture"] },
+        { conversationId: GROK_K2, title: "Loose grok", modifyTime: "2024-07-02T00:00:00Z", workspaces: [] }
+      ], nextPageToken: GROK_K2 });
+    }
+    return json({ conversations: [{ conversationId: GROK_K3, title: "Broken grok", modifyTime: "2024-07-03T00:00:00Z" }] });
+  }
+  const node = p.match(/^\/rest\/app-chat\/conversations\/([^/]+)\/response-node$/);
+  if (node) {
+    if (node[1] === GROK_K3) return { status: 500, contentType: "text/plain", body: "nope" };
+    return json({ responseNodes: [{ responseId: node[1] + "-q" }, { responseId: node[1] + "-a", parentResponseId: node[1] + "-q" }] });
+  }
+  const load = p.match(/^\/rest\/app-chat\/conversations\/([^/]+)\/load-responses$/);
+  if (load && request.method() === "POST") {
+    const pair = grokTexts[load[1]];
+    if (!pair) return { status: 404, contentType: "text/plain", body: "unknown" };
+    return json({ responses: [
+      { responseId: load[1] + "-a", sender: "ASSISTANT", message: pair[1], createTime: "2024-07-01T00:00:02Z" },
+      { responseId: load[1] + "-q", sender: "human", message: pair[0], createTime: "2024-07-01T00:00:01Z" }
+    ] });
+  }
+  if (p === "/favicon.ico") return { status: 204, contentType: "text/plain", body: "" };
+  return null;
+}
+
 function handleGemini(url, request) {
   if (url.pathname === "/notebook/nb-fixture") return page("gemini-notebook.html");
   if (url.pathname.includes("batchexecute")) {
@@ -229,13 +272,14 @@ function handleGemini(url, request) {
 }
 
 export async function installFixtures(context) {
-  await context.route(/https:\/\/(chatgpt\.com|claude\.ai|gemini\.google\.com)\//, async function (route) {
+  await context.route(/https:\/\/(chatgpt\.com|claude\.ai|gemini\.google\.com|grok\.com)\//, async function (route) {
     const request = route.request();
     const url = new URL(request.url());
     let hit = null;
     if (url.hostname === "chatgpt.com") hit = handleChatGpt(url);
     else if (url.hostname === "claude.ai") hit = handleClaude(url);
     else if (url.hostname === "gemini.google.com") hit = handleGemini(url, request);
+    else if (url.hostname === "grok.com") hit = handleGrok(url, request);
     if (!hit) {
       await route.fulfill({ status: 404, contentType: "text/plain", body: "unmocked " + url.pathname });
       return;

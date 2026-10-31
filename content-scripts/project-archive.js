@@ -272,6 +272,119 @@
     return "";
   }
 
+  /* ---- Grok (grok.com) ---- */
+  function grokHeaders(json) {
+    const h = { Accept: "application/json" };
+    try { h["x-xai-request-id"] = crypto.randomUUID(); } catch (e) { /* older browsers */ }
+    if (json) h["Content-Type"] = "application/json";
+    return h;
+  }
+
+  function grokItem(item) {
+    if (!item) return null;
+    const id = item.conversationId || item.id;
+    if (!id) return null;
+    const ws = Array.isArray(item.workspaces) ? item.workspaces : [];
+    const first = ws[0];
+    const workspaceId = typeof first === "string" ? first : (first && (first.workspaceId || first.id)) || item.workspaceId || "";
+    return {
+      id: String(id),
+      title: item.title || "Untitled chat",
+      updated: item.modifyTime || item.createTime || null,
+      url: location.origin + "/c/" + id,
+      projectId: workspaceId ? String(workspaceId) : ""
+    };
+  }
+
+  async function listGrokConversations(workspaceId, pause) {
+    return lib.collectPages(async function (cursor) {
+      let url = location.origin + "/rest/app-chat/conversations?pageSize=60";
+      if (workspaceId) url += "&workspaceId=" + encodeURIComponent(workspaceId);
+      if (cursor) url += "&pageToken=" + encodeURIComponent(cursor);
+      const res = await fetchRetry(url, { credentials: "include", headers: grokHeaders(false) }, pause);
+      if (!res.ok) throw new Error("chat list HTTP " + res.status);
+      const json = await res.json();
+      const raw = Array.isArray(json.conversations) ? json.conversations : [];
+      const items = raw.map(grokItem).filter(Boolean);
+      const next = raw.length && json.nextPageToken && json.nextPageToken !== cursor ? json.nextPageToken : null;
+      if (pause) await lib.sleep(Math.min(pause, 250));
+      return { items: items, nextCursor: next };
+    });
+  }
+
+  async function listGrokProjects(pause) {
+    const out = [];
+    let token = null;
+    for (let page = 0; page < 20; page += 1) {
+      let url = location.origin + "/rest/workspaces?pageSize=50&orderBy=ORDER_BY_LAST_USE_TIME";
+      if (token) url += "&pageToken=" + encodeURIComponent(token);
+      const res = await fetchRetry(url, { credentials: "include", headers: grokHeaders(false) }, pause);
+      if (!res.ok) throw new Error("project list HTTP " + res.status);
+      const json = await res.json();
+      const raw = Array.isArray(json.workspaces) ? json.workspaces : [];
+      raw.forEach(function (w) {
+        const id = w && (w.workspaceId || w.id);
+        if (id) out.push({ id: String(id), name: String(w.name || w.title || id) });
+      });
+      token = json.nextPageToken;
+      if (!token || !raw.length) break;
+    }
+    return out;
+  }
+
+  /* Chats for one Grok project: ask the list endpoint filtered by workspace,
+     then keep only chats that are tagged with that workspace (or all of them
+     when the list carries no workspace tags at all). */
+  async function listGrokProject(projectId, pause) {
+    const listed = await listGrokConversations(projectId, pause);
+    const items = listed.items || [];
+    const tagged = items.some(function (c) { return c.projectId; });
+    if (tagged) return { items: items.filter(function (c) { return c.projectId === projectId; }), note: listed.note || "" };
+    /* No workspace tags: make sure the server really filtered, not just returned every chat. */
+    const all = await listGrokConversations("", pause);
+    const allIds = (all.items || []).map(function (c) { return c.id; }).sort().join(",");
+    const gotIds = items.map(function (c) { return c.id; }).sort().join(",");
+    if (items.length && gotIds === allIds) return { items: [], note: "Grok did not filter chats by project, so this project's chats could not be told apart." };
+    return { items: items, note: listed.note || "" };
+  }
+
+  async function renderGrok(chat, pause) {
+    const debug = window.__AI_EXPORTER_DEBUG__;
+    const base = location.origin + "/rest/app-chat/conversations/" + encodeURIComponent(chat.id);
+    const nodeRes = await fetchRetry(base + "/response-node?includeThreads=true", { credentials: "include", headers: grokHeaders(false) }, pause);
+    if (!nodeRes.ok) throw new Error("response list HTTP " + nodeRes.status);
+    const nodes = (await nodeRes.json()).responseNodes || [];
+    const ids = nodes.map(function (n) { return n && n.responseId; }).filter(Boolean);
+    if (!ids.length) throw new Error("no messages");
+    const responses = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const res = await fetchRetry(base + "/load-responses", {
+        method: "POST",
+        credentials: "include",
+        headers: grokHeaders(true),
+        body: JSON.stringify({ responseIds: ids.slice(i, i + 50) })
+      }, pause);
+      if (!res.ok) throw new Error("conversation HTTP " + res.status);
+      const json = await res.json();
+      (json.responses || []).forEach(function (r) { responses.push(r); });
+    }
+    const order = new Map(ids.map(function (id, i) { return [id, i]; }));
+    responses.sort(function (a, b) {
+      const oa = order.has(a.responseId) ? order.get(a.responseId) : 1e9;
+      const ob = order.has(b.responseId) ? order.get(b.responseId) : 1e9;
+      return oa - ob || String(a.createTime || "").localeCompare(String(b.createTime || ""));
+    });
+    const turns = [];
+    responses.forEach(function (r) {
+      const text = String(r.message || r.query || "").trim();
+      if (!text) return;
+      const sender = String(r.sender || "").toLowerCase();
+      turns.push({ role: sender === "human" || sender === "user" ? "prompt" : "response", text: text });
+    });
+    if (!turns.length) throw new Error("no messages");
+    return debug.markdownFromHtmlNodes(debug.htmlNodesFromTurns(turns));
+  }
+
   async function renderChat(provider, chat, ctx, pause) {
     const debug = window.__AI_EXPORTER_DEBUG__;
     if (!debug) throw new Error("exporter unavailable");
@@ -326,6 +439,7 @@
       if (typeof debug.geminiMarkdownFromRpc !== "function") throw new Error("Gemini exporter unavailable");
       return debug.geminiMarkdownFromRpc(await res.text());
     }
+    if (provider === "grok") return renderGrok(chat, pause);
     throw new Error("unsupported provider");
   }
 
@@ -461,6 +575,13 @@
           }
         } catch (e) { /* heading fallback */ }
         listed = await listClaude(project.id, ctx.org, pause);
+      } else if (project.provider === "grok") {
+        try {
+          const projects = await listGrokProjects(pause);
+          const hit = projects.find(function (p) { return p.id === project.id; });
+          if (hit) projectName = hit.name;
+        } catch (e) { /* heading fallback */ }
+        listed = await listGrokProject(project.id, pause);
       } else if (project.provider === "gemini") {
         ctx.tokens = geminiTokens();
       }
@@ -619,9 +740,9 @@
     if (running) return { started: false, error: "An archive is already running." };
     const provider = lib.providerFromUrl ? lib.providerFromUrl(location.href) : null;
     const host = location.hostname;
-    const site = provider || (host.endsWith("chatgpt.com") ? "chatgpt" : host.endsWith("claude.ai") ? "claude" : host.endsWith("gemini.google.com") ? "gemini" : "");
+    const site = provider || (host.endsWith("chatgpt.com") ? "chatgpt" : host.endsWith("claude.ai") ? "claude" : host.endsWith("gemini.google.com") ? "gemini" : host === "grok.com" ? "grok" : "");
     if (!site) {
-      lastResult = { ok: false, error: "Open ChatGPT, Claude, or Gemini first." };
+      lastResult = { ok: false, error: "Open ChatGPT, Claude, Gemini, or Grok first." };
       setResult(lastResult);
       return { started: false, error: lastResult.error };
     }
@@ -667,6 +788,28 @@
         }
         setProgress("Listing chats…");
         loose = await listClaudeAll(ctx.org, pause);
+        loose.forEach(function (chat) {
+          const g = chat.projectId && groups.find(function (x) { return x.id === chat.projectId; });
+          if (g && !g.chats.some(function (c) { return c.id === chat.id; })) g.chats.push(chat);
+        });
+      } else if (site === "grok") {
+        let projects = [];
+        try { projects = await listGrokProjects(pause); } catch (e) { notes.push("Grok project list failed: " + ((e && e.message) || e) + "."); }
+        if (!projects.length && scope === "projects") notes.push("No Grok projects found.");
+        for (let i = 0; i < projects.length; i += 1) {
+          setProgress("Listing project " + (i + 1) + "/" + projects.length + " — " + projects[i].name);
+          try {
+            const listed = await listGrokProject(projects[i].id, pause);
+            if (listed.note) notes.push(projects[i].name + ": " + listed.note);
+            groups.push({ name: projects[i].name, id: projects[i].id, chats: listed.items || [] });
+          } catch (e) {
+            notes.push(projects[i].name + ": chat list failed (" + ((e && e.message) || e) + ").");
+            groups.push({ name: projects[i].name, id: projects[i].id, chats: [] });
+          }
+        }
+        setProgress("Listing chats…");
+        const all = await listGrokConversations("", pause);
+        loose = all.items || [];
         loose.forEach(function (chat) {
           const g = chat.projectId && groups.find(function (x) { return x.id === chat.projectId; });
           if (g && !g.chats.some(function (c) { return c.id === chat.id; })) g.chats.push(chat);

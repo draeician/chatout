@@ -94,6 +94,11 @@
       if (!m) return null;
       return { provider: "claude", id: m[1] };
     }
+    if (host === "grok.com") {
+      const m = path.match(/\/project\/([0-9a-zA-Z_-]+)/);
+      if (!m) return null;
+      return { provider: "grok", id: m[1] };
+    }
     if (host === "gemini.google.com") {
       const m = path.match(/\/(?:u\/\d+\/)?(?:app\/)?notebooks?\/([^/]+)/);
       if (!m) return null;
