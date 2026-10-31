@@ -405,7 +405,7 @@
             else resolve(resp);
           });
         });
-        if (response && response.ok) return { via: "downloads", downloadId: response.id, downloadError: "" };
+        if (response && response.ok) return { via: "downloads", downloadId: response.id, filename: response.filename || filename, downloadError: "" };
         downloadError = (response && response.error) || "downloads API returned no id";
       } catch (e) {
         downloadError = (e && e.message) || String(e);
@@ -505,7 +505,7 @@
 
       const folder = paths[0] ? paths[0].split("/")[0] : lib.sanitizeSegment(projectName, "project");
       files.push({ name: folder + "/_index.md", text: indexMarkdown(projectName, rows, failures, listNote) });
-      const zipName = lib.zipDownloadName(projectName, new Date());
+      const zipName = lib.zipDownloadName(project.provider, projectName, new Date());
       setProgress("Saving " + rows.length + " chat" + (rows.length === 1 ? "" : "s") + "…");
       const bytes = lib.buildStoredZip(files);
       const saved = await saveZip(zipName, bytes);
@@ -517,6 +517,7 @@
         failed: failures.length,
         project: projectName,
         filename: zipName,
+        savedAs: saved.filename || "",
         via: saved.via,
         downloadId: saved.downloadId == null ? null : saved.downloadId,
         downloadError: saved.downloadError || "",

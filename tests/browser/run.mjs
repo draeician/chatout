@@ -73,6 +73,8 @@ async function archiveProject(page, context) {
   }));
   if (!result.ok) throw new Error((result.error || "archive failed") + "\n" + page.__logs.join("\n"));
   if (result.downloadId == null) throw new Error("archive did not use chrome.downloads\n" + JSON.stringify(result));
+  if (!/^(chatgpt|claude|gemini)-[\p{L}\p{N}_-]+-\d{8}-\d{6}\.zip$/u.test(result.filename)) throw new Error("zip name " + result.filename);
+  if (result.savedAs !== "chatout-archives/" + result.filename) throw new Error("savedAs " + result.savedAs);
   const worker = await serviceWorker(context);
   const saved = await waitForDownload(worker, result.downloadId);
   return { result: result, file: saved.filename, names: unzipNames(saved.filename) };

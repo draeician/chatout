@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.17] - 2026-10-31
+
+### Fixed
+- Project archives no longer save as `download.zip`. The background worker now also answers `downloads.onDeterminingFilename` for its own downloads, so another extension or Chrome can't drop the name.
+
+### Changed
+- Archive zips are named `<provider>-<project>-<YYYYMMDD-HHMMSS>.zip` (e.g. `chatgpt-repo-aethergate-20261031-133205.zip`) and saved in `Downloads/chatout-archives/`.
+
 ## [3.7.0.16] - 2026-10-31
 
 ### Changed
