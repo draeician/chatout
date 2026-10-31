@@ -14,6 +14,8 @@ const GPT_B = "bbbbbbbb-2222-4222-8222-222222222222";
 const GPT_C = "cccccccc-3333-4333-8333-333333333333";
 const GPT_D = "dddddddd-4444-4444-8444-444444444444";
 const GPT_DOM = "eeeeeeee-5555-4555-8555-555555555555";
+const GPT_LOOSE = "ffffffff-6666-4666-8666-666666666666";
+const CLAUDE_LOOSE = "44444444-4444-4444-8444-444444444444";
 
 const CLAUDE_P1 = "11111111-1111-4111-8111-111111111111";
 const CLAUDE_P2 = "22222222-2222-4222-8222-222222222222";
@@ -59,6 +61,7 @@ const chatgptBodies = {
   [GPT_A]: chatgptConversation("Packing list", "Bring a raincoat", "Pack a light shell."),
   [GPT_B]: chatgptConversation("Hello/World?", "Slash title question", "Use a safe filename."),
   [GPT_C]: chatgptConversation("Packing list", "Second packing note", "Duplicate titles stay distinct."),
+  [GPT_LOOSE]: chatgptConversation("Loose chat", "Not in a project", "Saved under no-project."),
   [GPT_DOM]: chatgptConversation("From the page", "Loaded from the page link", "DOM fallback worked.")
 };
 
@@ -100,6 +103,19 @@ function handleChatGpt(url) {
   if (pathName === "/g/g-p-domonly/project") return page("chatgpt-dom-project.html");
   if (pathName === "/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
   if (pathName === "/g/g-p-fixture/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
+  if (pathName === "/backend-api/gizmos/snorlax/sidebar") {
+    return json({ items: [{ gizmo: { gizmo: { id: "g-p-fixture", display: { name: "My Research" } } }, conversations: { items: [] } }], cursor: null });
+  }
+  if (pathName === "/backend-api/conversations") {
+    const offset = Number(url.searchParams.get("offset") || "0");
+    if (offset === 0) {
+      return json({ items: [
+        { id: GPT_A, title: "Packing list", update_time: "2024-05-06T00:00:00.000Z" },
+        { id: GPT_LOOSE, title: "Loose chat", update_time: "2024-05-10T00:00:00.000Z" }
+      ], total: 2, offset: 0, limit: 100 });
+    }
+    return json({ items: [], total: 2, offset: offset, limit: 100 });
+  }
   if (pathName === "/backend-api/gizmos/g-p-fixture") return json({ name: "My Research" });
   if (pathName === "/backend-api/gizmos/g-p-domonly") return json({ name: "DOM Only" });
   if (pathName === "/backend-api/gizmos/g-p-fixture/conversations") {
@@ -144,6 +160,15 @@ function handleClaude(url) {
   const pathName = url.pathname;
   if (pathName === "/chat/" + CHATGPT_CHAT) return page("claude-chat.html");
   if (pathName === "/project/" + CLAUDE_PROJECT) return page("claude-project.html");
+  if (pathName === "/api/organizations/org-fixture/projects") {
+    return json([{ uuid: CLAUDE_PROJECT, name: "Ops notes" }]);
+  }
+  if (pathName === "/api/organizations/org-fixture/chat_conversations") {
+    return json([
+      { uuid: CLAUDE_P1, name: "Deploy", updated_at: "2024-06-01T00:00:00.000Z", project_uuid: CLAUDE_PROJECT },
+      { uuid: CLAUDE_LOOSE, name: "Solo", updated_at: "2024-06-04T00:00:00.000Z", project_uuid: null }
+    ]);
+  }
   if (pathName === "/api/organizations/org-fixture/projects/" + CLAUDE_PROJECT) {
     return json({ name: "Ops notes", uuid: CLAUDE_PROJECT });
   }
@@ -170,7 +195,8 @@ function handleClaude(url) {
     if (conv[1] === CLAUDE_P3) return { status: 500, contentType: "text/plain", body: "nope" };
     const texts = {
       [CLAUDE_P1]: ["Restart the worker?", "Yes, then check the logs."],
-      [CLAUDE_P2]: ["Where is the runbook?", "Pinned in the project."]
+      [CLAUDE_P2]: ["Where is the runbook?", "Pinned in the project."],
+      [CLAUDE_LOOSE]: ["Solo question", "Solo answer."]
     };
     const pair = texts[conv[1]];
     if (!pair) return { status: 404, contentType: "text/plain", body: "unknown" };

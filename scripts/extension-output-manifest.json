@@ -9,5 +9,6 @@
   "shared/config.js": "src/shared/config.js",
   "chunks/chunk-QIZ4XBKF-BhS6KZya.js": "src/shared/chunk.js",
   "chunks/popup--djBx5PX.js": "src/popup/index.js",
-  "chunks/options-CjNsQ3MZ.js": "src/options/index.js"
+  "chunks/options-CjNsQ3MZ.js": "src/options/index.js",
+  "popup-archive.js": "src/popup/archive-everything.js"
 }

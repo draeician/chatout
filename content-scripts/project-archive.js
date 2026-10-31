@@ -534,6 +534,261 @@
     }
   }
 
+  /* ---- Archive everything: every project plus chats outside projects, current site only. ---- */
+  let lastResult = null;
+
+  async function listChatGptProjects(headers, pause) {
+    const out = [];
+    const seen = new Set();
+    let cursor = null;
+    for (let page = 0; page < 50; page += 1) {
+      let url = location.origin + "/backend-api/gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=0";
+      if (cursor) url += "&cursor=" + encodeURIComponent(cursor);
+      const res = await fetchRetry(url, { credentials: "include", headers: headers, method: "GET" }, pause);
+      if (!res.ok) throw new Error("project list HTTP " + res.status);
+      const json = await res.json();
+      const items = Array.isArray(json.items) ? json.items : [];
+      items.forEach(function (entry) {
+        const g = (entry && entry.gizmo && (entry.gizmo.gizmo || entry.gizmo)) || entry || {};
+        const id = g.id;
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        const name = (g.display && g.display.name) || g.name || digName(g, 0) || id;
+        out.push({ id: String(id), name: String(name) });
+      });
+      cursor = json.cursor;
+      if (!cursor || !items.length) break;
+      if (pause) await lib.sleep(Math.min(pause, 250));
+    }
+    return out;
+  }
+
+  async function listChatGptAll(headers, pause) {
+    return lib.collectPages(async function (cursor) {
+      const offset = cursor == null ? 0 : Number(cursor);
+      const url = location.origin + "/backend-api/conversations?offset=" + offset + "&limit=100&order=updated";
+      const res = await fetchRetry(url, { credentials: "include", headers: headers, method: "GET" }, pause);
+      if (!res.ok) throw new Error("chat list HTTP " + res.status);
+      const json = await res.json();
+      const raw = Array.isArray(json.items) ? json.items : [];
+      const items = raw.map(chatGptItem).filter(Boolean);
+      const total = Number(json.total);
+      const got = offset + raw.length;
+      const next = raw.length && (!Number.isFinite(total) || got < total) ? got : null;
+      if (pause) await lib.sleep(Math.min(pause, 250));
+      return { items: items, nextCursor: next };
+    });
+  }
+
+  async function claudeJson(path, pause) {
+    const res = await fetchRetry(location.origin + "/api/organizations/" + encodeURIComponent(path.org) + path.rest, {
+      credentials: "include",
+      headers: { Accept: "application/json" }
+    }, pause);
+    if (!res.ok) throw new Error("list HTTP " + res.status);
+    return res.json();
+  }
+
+  async function listClaudeProjects(org, pause) {
+    const json = await claudeJson({ org: org, rest: "/projects" }, pause);
+    const raw = Array.isArray(json) ? json : (json.projects || json.data || []);
+    return raw.filter(function (p) { return p && (p.uuid || p.id); }).map(function (p) {
+      return { id: String(p.uuid || p.id), name: String(p.name || p.title || p.uuid || p.id) };
+    });
+  }
+
+  async function listClaudeAll(org, pause) {
+    const json = await claudeJson({ org: org, rest: "/chat_conversations" }, pause);
+    const raw = Array.isArray(json) ? json : (json.conversations || json.chat_conversations || json.data || []);
+    return raw.map(function (item) {
+      const chat = claudeItem(item);
+      if (chat) chat.projectId = item.project_uuid || (item.project && item.project.uuid) || "";
+      return chat;
+    }).filter(Boolean);
+  }
+
+  function uniqueFolder(name, id, used) {
+    let folder = lib.sanitizeSegment(name, "project");
+    if (used.has(folder)) folder = folder + "_" + lib.idSuffix(id);
+    used.add(folder);
+    return folder;
+  }
+
+  async function archiveEverything(scopeArg) {
+    const scope = scopeArg === "projects" || scopeArg === "chats" ? scopeArg : "everything";
+    if (running) return { started: false, error: "An archive is already running." };
+    const provider = lib.providerFromUrl ? lib.providerFromUrl(location.href) : null;
+    const host = location.hostname;
+    const site = provider || (host.endsWith("chatgpt.com") ? "chatgpt" : host.endsWith("claude.ai") ? "claude" : host.endsWith("gemini.google.com") ? "gemini" : "");
+    if (!site) {
+      lastResult = { ok: false, error: "Open ChatGPT, Claude, or Gemini first." };
+      setResult(lastResult);
+      return { started: false, error: lastResult.error };
+    }
+    running = true;
+    lastResult = null;
+    document.documentElement.removeAttribute("data-chatout-archive-result");
+    const pause = delayMs();
+    const failures = [];
+    const notes = [];
+    try {
+      setProgress("Listing projects…");
+      const ctx = { headers: null, org: "", tokens: null };
+      const groups = []; // { name, folder, chats }
+      const usedFolders = new Set(["no-project"]);
+      const claimed = new Set();
+      let loose = [];
+      if (site === "chatgpt") {
+        ctx.headers = await chatGptHeaders(pause);
+        let projects = [];
+        try { projects = await listChatGptProjects(ctx.headers, pause); } catch (e) { notes.push("Project list failed: " + ((e && e.message) || e) + "."); }
+        for (let i = 0; i < projects.length; i += 1) {
+          setProgress("Listing project " + (i + 1) + "/" + projects.length + " — " + projects[i].name);
+          const listed = await listChatGpt(projects[i].id, ctx.headers, pause);
+          if (listed.note) notes.push(projects[i].name + ": " + listed.note);
+          groups.push({ name: projects[i].name, id: projects[i].id, chats: listed.items || [] });
+        }
+        if (scope === "projects") { /* no loose list */ } else {
+        setProgress("Listing chats outside projects…");
+        const all = await listChatGptAll(ctx.headers, pause);
+        if (all.note) notes.push("Chat list: " + all.note);
+        loose = all.items || [];
+        }
+      } else if (site === "claude") {
+        ctx.org = claudeOrgId();
+        if (!ctx.org) throw new Error("Could not find the Claude organization id (lastActiveOrg).");
+        let projects = [];
+        try { projects = await listClaudeProjects(ctx.org, pause); } catch (e) { notes.push("Project list failed: " + ((e && e.message) || e) + "."); }
+        for (let i = 0; i < projects.length; i += 1) {
+          setProgress("Listing project " + (i + 1) + "/" + projects.length + " — " + projects[i].name);
+          const listed = await listClaude(projects[i].id, ctx.org, pause);
+          if (listed.note) notes.push(projects[i].name + ": " + listed.note);
+          groups.push({ name: projects[i].name, id: projects[i].id, chats: listed.items || [] });
+        }
+        setProgress("Listing chats…");
+        loose = await listClaudeAll(ctx.org, pause);
+        loose.forEach(function (chat) {
+          const g = chat.projectId && groups.find(function (x) { return x.id === chat.projectId; });
+          if (g && !g.chats.some(function (c) { return c.id === chat.id; })) g.chats.push(chat);
+        });
+      } else {
+        ctx.tokens = geminiTokens();
+        if (scope === "projects") notes.push("Gemini has no projects ChatOut can read, so there is nothing to save in projects-only mode.");
+        else notes.push("Gemini has no project list ChatOut can read; only chats linked in the sidebar were saved, all under no-project/.");
+        setProgress("Listing chats from the sidebar…");
+        loose = scope === "projects" ? [] : await collectDomChats("gemini", pause);
+      }
+
+      // Dedupe: each conversation id once, project folder wins.
+      const work = [];
+      groups.forEach(function (g) {
+        const chats = g.chats.filter(function (c) { if (claimed.has(c.id)) return false; claimed.add(c.id); return true; });
+        g.folder = uniqueFolder(g.name, g.id, usedFolders);
+        g.count = chats.length;
+        if (chats.length && scope !== "chats") work.push({ group: g, chats: chats });
+      });
+      const rest = scope === "projects" ? [] : loose.filter(function (c) { if (claimed.has(c.id)) return false; claimed.add(c.id); return true; });
+      const noProject = { name: "No project", folder: "no-project", count: rest.length };
+      if (rest.length) work.push({ group: noProject, chats: rest });
+
+      const total = work.reduce(function (n, w) { return n + w.chats.length; }, 0);
+      if (!total) {
+        lastResult = { ok: true, empty: true, exported: 0, failed: 0, projects: groups.length, failures: [], notes: notes };
+        setProgress("No chats found." + (notes.length ? " " + notes.join(" ") : ""));
+        setResult(lastResult);
+        return { started: true };
+      }
+
+      const files = [];
+      let done = 0;
+      let exported = 0;
+      for (const w of work) {
+        const g = w.group;
+        const paths = lib.buildChatPaths(g.folder, w.chats, "md").map(function (p) { return g.folder + p.slice(p.indexOf("/")); });
+        const rows = [];
+        const groupFailures = [];
+        for (let i = 0; i < w.chats.length; i += 1) {
+          const chat = w.chats[i];
+          done += 1;
+          setProgress("Archiving everything — " + done + "/" + total + " — " + g.name + " — " + chat.title);
+          try {
+            const markdown = await renderChat(site, chat, ctx, pause);
+            if (!markdown || !String(markdown).trim()) throw new Error("empty export");
+            files.push({ name: paths[i], text: preface(g.name, chat, site) + markdown });
+            rows.push({ path: paths[i], title: chat.title, id: chat.id });
+          } catch (e) {
+            const f = { id: chat.id, title: chat.title, project: g.name, error: String((e && e.message) || e).slice(0, 300) };
+            groupFailures.push(f);
+            failures.push(f);
+          }
+          if (pause) await lib.sleep(pause);
+        }
+        exported += rows.length;
+        g.exported = rows.length;
+        g.failed = groupFailures.length;
+        files.push({ name: g.folder + "/_index.md", text: indexMarkdown(g.name, rows, groupFailures, "") });
+      }
+
+      const top = [
+        "# ChatOut archive: " + scope + " on " + site,
+        "",
+        "- Saved: " + new Date().toISOString(),
+        "- Exported: " + exported,
+        "- Failed: " + failures.length,
+        "- Projects: " + groups.length,
+        "",
+        "## Folders",
+        ""
+      ];
+      (scope === "chats" ? [] : groups).concat(rest.length ? [noProject] : []).forEach(function (g) {
+        top.push("- " + g.folder + "/ — " + g.name + " — " + (g.exported || 0) + " exported, " + (g.failed || 0) + " failed");
+      });
+      if (notes.length) { top.push("", "## Notes", ""); notes.forEach(function (n) { top.push("- " + n); }); }
+      files.push({ name: "_index.md", text: top.join("\n") + "\n" });
+
+      const zipName = lib.zipDownloadName(site, scope === "chats" ? "chats" : scope, new Date());
+      setProgress("Saving " + exported + " chats…");
+      const saved = await saveZip(zipName, lib.buildStoredZip(files));
+      const summary = "Exported " + exported + ", failed " + failures.length + ".";
+      setProgress(summary + " Saved " + zipName + ".");
+      lastResult = {
+        ok: true, scope: scope, exported: exported, failed: failures.length, projects: groups.length,
+        filename: zipName, savedAs: saved.filename || "", via: saved.via,
+        downloadId: saved.downloadId == null ? null : saved.downloadId, downloadError: saved.downloadError || "",
+        failures: failures, notes: notes
+      };
+      setResult(lastResult);
+    } catch (e) {
+      const message = String((e && e.message) || e).slice(0, 300);
+      setProgress(message);
+      lastResult = { ok: false, error: message, exported: 0, failed: failures.length, failures: failures };
+      setResult(lastResult);
+    } finally {
+      running = false;
+    }
+    return { started: true };
+  }
+
+  if (api && api.runtime && api.runtime.onMessage) {
+    api.runtime.onMessage.addListener(function (msg, _sender, sendResponse) {
+      if (!msg || window.top !== window) return;
+      if (msg.type === "chatout-archive-everything") {
+        if (running) { sendResponse({ started: false, error: "An archive is already running." }); return; }
+        lastResult = null;
+        archiveEverything(msg.scope);
+        sendResponse({ started: true });
+        return;
+      }
+      if (msg.type === "chatout-archive-status") {
+        sendResponse({
+          running: running,
+          progress: document.documentElement.getAttribute("data-chatout-archive-progress") || "",
+          result: lastResult
+        });
+      }
+    });
+  }
+
   async function exportCurrent() {
     const debug = window.__AI_EXPORTER_DEBUG__;
     document.documentElement.removeAttribute("data-chatout-export-result");
@@ -582,6 +837,7 @@
   document.addEventListener("chatout-command", function () {
     const command = document.documentElement.getAttribute("data-chatout-command") || "";
     if (command === "archive-project") archiveProject();
+    else if (command.startsWith("archive-everything")) archiveEverything(command.split(":")[1]);
     else if (command === "export-markdown") exportCurrent();
   }, true);
 
@@ -590,6 +846,7 @@
   document.documentElement.setAttribute("data-chatout-ready", "1");
   globalThis.__CHATOUT_ARCHIVE__ = {
     archiveProject: archiveProject,
+    archiveEverything: archiveEverything,
     detectProjectUrl: lib.detectProjectUrl
   };
 })();
