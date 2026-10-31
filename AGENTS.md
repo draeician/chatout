@@ -75,11 +75,13 @@ Shortcut keywords (act as Manager, then follow `GIT_POLICY.md`):
 
 ## Versioning and packaging
 
-- Master (and only) version string: `manifest.json` → `version`.
-- Bump when shipping a loadable fix users will verify in Chrome; use the existing multi-part Chrome version scheme (monotonic increase).
-- **Per loadable update**: increment the last segment by **1** (`0.0.0.1` style, e.g. `3.7.0.1` → `3.7.0.2`) so the popup/settings version clearly changes on extension refresh.
-- Conventional commit types map to bumps: `feat` → minor-ish segment when warranted, otherwise prefer last-segment `+1`; `fix`/`docs`/`chore`/`refactor` → last-segment `+1` unless a larger bump is intentional.
-- Package with `./scripts/package-extension.sh`; zips land in `dist/`.
+**Required on every loadable change, before the PR.** A user reloads this extension in Chrome. If `manifest.json` `version` is unchanged, popup, Settings, and `chrome://extensions` still show the previous build. That includes `feat` work (new export behavior, a new provider path, a test harness that ships with the extension), not only bugfixes.
+
+- The only product version is `manifest.json` → `version`. Do not add a `version` field to `package.json` (that file is private test tooling and is not what Chrome loads). Popup and Settings display `chrome.runtime.getManifest().version`; they have no hardcoded version string. Firefox packaging reads the same manifest field.
+- `scripts/build-extension.mjs` does not embed the version in JS. It rewrites manifest script paths and copies `version` through. Leave `EXTENSION_VERSION` unset so the committed manifest stays the source. A manifest-only bump does not require rebuilt bundles.
+- Increment the **last** segment by **1** (`3.7.0.13` → `3.7.0.14`). Do this for `feat`, `fix`, `docs`, `chore`, and `refactor`. Use a larger segment only when the user explicitly asks for one.
+- Add a `CHANGELOG.md` heading for that exact version in the same change. The heading must match `manifest.json`.
+- Package with `./scripts/package-extension.sh`; zip names under `dist/` take their version from `manifest.json`.
 
 ## Testing discipline
 

@@ -55,8 +55,8 @@ Durable scope, stack, and conventions for **ai-export-drae-chrome**.
 
 ## Release process
 
-- Bump `manifest.json` `version` when shipping a fix that must be verified in Chrome.
-- Update `CHANGELOG.md` (Keep a Changelog).
+- On every loadable change, bump `manifest.json` `version` by incrementing the **last** segment by 1 (`3.7.0.13` → `3.7.0.14`), including features. Popup and Settings read this field live. Do not add a `package.json` version.
+- Update `CHANGELOG.md` (Keep a Changelog) with a heading for that exact version.
 - Package with `./scripts/package-extension.sh`.
 - Feature branches: `feat/…`, `fix/…`, etc.
 
