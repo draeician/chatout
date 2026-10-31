@@ -284,6 +284,123 @@
     return Array.from(seen.values());
   }
 
+  /* ---- Gemini chat list: MaZiqc RPC first, sidebar scan as fallback ---- */
+  function geminiId(raw) {
+    return String(raw || "").trim().replace(/^c_/, "");
+  }
+
+  function parseBatchFrames(text, rpcid) {
+    const out = [];
+    String(text || "").split("\n").forEach(function (line) {
+      const t = line.trim();
+      if (!t.startsWith("[")) return;
+      let frame;
+      try { frame = JSON.parse(t); } catch (e) { return; }
+      (Array.isArray(frame) ? frame : []).forEach(function (entry) {
+        if (Array.isArray(entry) && entry[0] === "wrb.fr" && entry[1] === rpcid && typeof entry[2] === "string") {
+          try { out.push(JSON.parse(entry[2])); } catch (e) { /* skip */ }
+        }
+      });
+    });
+    return out;
+  }
+
+  async function geminiRpc(tokens, rpcid, payload, pause) {
+    const reqid = String(Math.floor(Math.random() * 9000000) + 1000000);
+    const endpoint = location.origin + tokens.servicePath + "/data/batchexecute?rpcids=" + rpcid +
+      "&source-path=" + encodeURIComponent(location.pathname || "/app") + "&bl=" + encodeURIComponent(tokens.bl) +
+      "&f.sid=" + encodeURIComponent(tokens.sid) + "&hl=en&_reqid=" + reqid + "&rt=c";
+    const body = new URLSearchParams();
+    body.set("f.req", JSON.stringify([[[rpcid, payload, null, "generic"]]]));
+    body.set("at", tokens.at);
+    const res = await fetchRetry(endpoint, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", "X-Same-Domain": "1" },
+      body: body.toString()
+    }, pause);
+    if (!res.ok) throw new Error(rpcid + " HTTP " + res.status);
+    return parseBatchFrames(await res.text(), rpcid);
+  }
+
+  async function listGeminiRpc(tokens, pause) {
+    if (!tokens.at || !tokens.bl || !tokens.sid) throw new Error("missing Gemini session tokens on the page");
+    const seen = new Map();
+    let cursor = null;
+    for (let page = 0; page < 200; page += 1) {
+      const payloads = cursor ? [JSON.stringify([50, cursor, [0, null, 1]])] : [JSON.stringify([50, null, [0, null, 1]]), JSON.stringify([200])];
+      let inner = null;
+      for (const payload of payloads) {
+        const frames = await geminiRpc(tokens, "MaZiqc", payload, pause);
+        const hit = frames.find(function (f) { return Array.isArray(f) && Array.isArray(f[2]) && f[2].length; });
+        if (hit) { inner = hit; break; }
+      }
+      if (!inner) break;
+      const before = seen.size;
+      inner[2].forEach(function (row) {
+        if (!Array.isArray(row) || !row[0]) return;
+        const id = geminiId(row[0]);
+        if (!id || seen.has(id)) return;
+        const ts = Array.isArray(row[5]) && Number(row[5][0]) ? new Date(Number(row[5][0]) * 1000).toISOString() : null;
+        seen.set(id, { id: id, title: row[1] ? String(row[1]) : "Untitled chat", updated: ts, url: location.origin + "/app/" + id });
+      });
+      cursor = typeof inner[1] === "string" && inner[1] ? inner[1] : null;
+      if (!cursor || seen.size === before) break;
+      if (pause) await lib.sleep(Math.min(pause, 250));
+    }
+    return Array.from(seen.values());
+  }
+
+  /* Sidebar items are often divs/buttons, not links; ids hide in href, data-* or jslog as c_<hex>. */
+  async function collectGeminiSidebar(pause) {
+    const seen = new Map();
+    const idRe = /\bc_([0-9a-f]{8,})\b/i;
+    let stable = 0;
+    for (let pass = 0; pass < 60; pass += 1) {
+      const before = seen.size;
+      document.querySelectorAll("a[href*='/app/'], [jslog*='c_'], [data-conversation-id], [data-test-id*='conversation'], [data-id]").forEach(function (el) {
+        let id = "";
+        const href = el.getAttribute("href");
+        if (href) id = chatIdFromHref("gemini", href) || "";
+        if (!id) {
+          const attrs = el.attributes;
+          for (let i = 0; i < attrs.length && !id; i += 1) {
+            const m = String(attrs[i].value).match(idRe);
+            if (m) id = m[1];
+            else if (attrs[i].name === "data-conversation-id" && attrs[i].value) id = attrs[i].value;
+          }
+        }
+        id = geminiId(id);
+        if (!id || seen.has(id)) return;
+        const title = (el.textContent || "").replace(/\s+/g, " ").trim() || id;
+        seen.set(id, { id: id, title: title, updated: null, url: location.origin + "/app/" + id });
+      });
+      if (seen.size === before) stable += 1; else stable = 0;
+      if (stable >= 3) break;
+      document.querySelectorAll("nav, aside, side-navigation, [role='navigation'], .conversations-container, infinite-scroller, *").forEach(function (el) {
+        if (el.scrollHeight > el.clientHeight + 20 && el.clientHeight > 0) el.scrollTop = el.scrollHeight;
+      });
+      await new Promise(function (resolve) { setTimeout(resolve, Math.max(150, Math.min(pause || 0, 600))); });
+    }
+    return Array.from(seen.values());
+  }
+
+  async function listGeminiAll(tokens, pause, notes) {
+    let chats = [];
+    try {
+      chats = await listGeminiRpc(tokens, pause);
+    } catch (e) {
+      if (cancelRequested) throw e;
+      notes.push("Gemini chat list request failed (" + ((e && e.message) || e) + "); used the sidebar instead.");
+    }
+    if (!chats.length) {
+      setProgress("Listing chats from the sidebar…");
+      chats = await collectGeminiSidebar(pause);
+      if (chats.length) notes.push("Gemini chats were read from the sidebar.");
+    }
+    return chats;
+  }
+
   function geminiTokens() {
     const html = document.documentElement ? document.documentElement.innerHTML : "";
     function pick(key) {
@@ -666,9 +783,9 @@
       const tokens = ctx.tokens;
       if (!tokens.at || !tokens.sid || !tokens.bl) throw new Error("missing Gemini session tokens on the page");
       const reqid = String(Math.floor(Math.random() * 9000000) + 1000000);
-      const sourcePath = "/app/" + chat.id;
+      const sourcePath = "/app/" + geminiId(chat.id);
       const endpoint = location.origin + tokens.servicePath + "/data/batchexecute?rpcids=hNvQHb&source-path=" + encodeURIComponent(sourcePath) + "&bl=" + encodeURIComponent(tokens.bl) + "&f.sid=" + encodeURIComponent(tokens.sid) + "&hl=en&_reqid=" + reqid + "&rt=c";
-      const payload = JSON.stringify(["c_" + chat.id, 100, null, 1, [0], [4], null, 1]);
+      const payload = JSON.stringify(["c_" + geminiId(chat.id), 100, null, 1, [0], [4], null, 1]);
       const body = new URLSearchParams();
       body.set("f.req", JSON.stringify([[["hNvQHb", payload, null, "generic"]]]));
       body.set("at", tokens.at);
@@ -1076,9 +1193,9 @@
       } else {
         ctx.tokens = geminiTokens();
         if (scope === "projects") notes.push("Gemini has no projects ChatOut can read, so there is nothing to save in projects-only mode.");
-        else notes.push("Gemini has no project list ChatOut can read; only chats linked in the sidebar were saved, all under no-project/.");
-        setProgress("Listing chats from the sidebar…");
-        loose = scope === "projects" ? [] : await collectDomChats("gemini", pause);
+        else notes.push("Gemini has no project list ChatOut can read; chats are saved under no-project/.");
+        setProgress("Listing chats…");
+        loose = scope === "projects" ? [] : await listGeminiAll(ctx.tokens, pause, notes);
       }
 
       checkCancel();
