@@ -264,9 +264,11 @@
       pad2(d.getSeconds());
   }
 
-  function zipDownloadName(projectName, when) {
+  function zipDownloadName(provider, projectName, when) {
     const stamp = formatStamp(when) || "export";
-    return "chatout_" + sanitizeSegment(projectName, "project") + "_" + stamp + ".zip";
+    const site = sanitizeSegment(provider, "chatout").replace(/_/g, "-");
+    const slug = sanitizeSegment(projectName, "project").replace(/_/g, "-").replace(/-+/g, "-");
+    return site + "-" + slug + "-" + stamp + ".zip";
   }
 
   const api = {

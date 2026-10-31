@@ -106,3 +106,9 @@ test("writes a zip another tool can read", function () {
   assert.throws(function () { lib.buildStoredZip([{ name: "../secret.md", text: "nope" }]); });
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("zip name is provider-project-timestamp in local time", function () {
+  const name = lib.zipDownloadName("chatgpt", "Repo AetherGate", new Date(2026, 0, 5, 3, 4, 5));
+  assert.equal(name, "chatgpt-repo-aethergate-20260105-030405.zip");
+  assert.equal(lib.zipDownloadName("claude", "", new Date(2026, 9, 31, 13, 32, 5)), "claude-project-20261031-133205.zip");
+});
