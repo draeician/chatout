@@ -15,6 +15,8 @@ cp "$ROOT/content-scripts/config.js" \
    "$ROOT/content-scripts/content.js" \
    "$ROOT/content-scripts/content.css" \
    "$ROOT/content-scripts/start.js" \
+   "$ROOT/content-scripts/project-archive-lib.js" \
+   "$ROOT/content-scripts/project-archive.js" \
    "$STAGE/content-scripts/"
 # Referenced by manifest content_scripts (debug harnesses; gated in-page)
 if [[ -f "$ROOT/content-scripts/grok-title-debug.js" ]]; then

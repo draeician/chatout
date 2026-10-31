@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Trip notebook - Gemini</title>
+</head>
+<body>
+  <h1>Trip notebook</h1>
+  <script>
+    window.WIZ_global_data = {
+      "SNlM0e": "fixture-at",
+      "cfb2h": "fixture-bl",
+      "FdrFJe": "fixture-sid",
+      "Im6cmf": "/_/BardChatUi"
+    };
+  </script>
+  <main>
+    <div id="nb-chats" style="height:80px;overflow:auto">
+      <a href="/app/alpha">Packing list</a>
+      <div style="height:240px"></div>
+      <a href="/app/beta">Flights</a>
+    </div>
+  </main>
+  <script>
+    (function () {
+      var box = document.getElementById("nb-chats");
+      var added = false;
+      box.addEventListener("scroll", function () {
+        if (added) return;
+        if (box.scrollTop + box.clientHeight >= box.scrollHeight - 5) {
+          added = true;
+          var link = document.createElement("a");
+          link.href = "/app/gamma";
+          link.textContent = "Hotels";
+          box.appendChild(link);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
