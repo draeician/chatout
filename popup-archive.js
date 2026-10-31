@@ -22,9 +22,46 @@
         "<input type='checkbox' data-scope='" + m.scope + "' aria-label='" + m.label + "'> <span>" + m.label +
         "<br><small style='color:#6b7280'>" + m.hint + "</small></span></label>";
     }).join("") +
+    "<button type='button' id='chatout-archive-all-cancel' hidden style='margin-top:6px'>Cancel</button>" +
+    "<div id='chatout-archive-all-confirm' role='dialog' aria-modal='true' aria-labelledby='chatout-archive-all-confirm-text' hidden style='margin-top:6px;padding:8px;border:1px solid #f59e0b;border-radius:8px;background:#fffbeb'>" +
+    "<div id='chatout-archive-all-confirm-text'></div>" +
+    "<div style='display:flex;gap:6px;justify-content:flex-end;margin-top:6px'>" +
+    "<button type='button' id='chatout-archive-all-no'>Cancel</button><button type='button' id='chatout-archive-all-yes'>Archive</button></div></div>" +
     "<div id='chatout-archive-all-status' role='status' aria-live='polite' style='margin-top:4px;color:#374151'></div>";
   const statusEl = box.querySelector("#chatout-archive-all-status");
   const inputs = Array.prototype.slice.call(box.querySelectorAll("input[type=checkbox]"));
+  const cancelBtn = box.querySelector("#chatout-archive-all-cancel");
+  const confirmEl = box.querySelector("#chatout-archive-all-confirm");
+  const confirmText = box.querySelector("#chatout-archive-all-confirm-text");
+  const SITES = { "chatgpt.com": "ChatGPT", "chat.openai.com": "ChatGPT", "claude.ai": "Claude", "gemini.google.com": "Gemini", "grok.com": "Grok" };
+
+  async function siteName(tabId) {
+    try {
+      const tab = await new Promise(function (resolve) { api.tabs.get(tabId, resolve); });
+      const host = new URL(tab.url).hostname.replace(/^www\./, "");
+      return SITES[host] || host;
+    } catch (e) { return "this site"; }
+  }
+
+  function askConfirm(site) {
+    return new Promise(function (resolve) {
+      confirmText.textContent = "Archive everything on " + site + "? This downloads every chat and project and can be large.";
+      confirmEl.hidden = false;
+      const yes = box.querySelector("#chatout-archive-all-yes");
+      const no = box.querySelector("#chatout-archive-all-no");
+      function done(answer) {
+        confirmEl.hidden = true;
+        yes.removeEventListener("click", onYes);
+        no.removeEventListener("click", onNo);
+        resolve(answer);
+      }
+      function onYes() { done(true); }
+      function onNo() { done(false); }
+      yes.addEventListener("click", onYes);
+      no.addEventListener("click", onNo);
+      no.focus();
+    });
+  }
 
   function setStatus(text) { statusEl.textContent = text || ""; }
   function lock(scope) {
@@ -34,6 +71,8 @@
       input.disabled = !!scope;
     });
     box.setAttribute("data-running", scope ? scope : "");
+    cancelBtn.hidden = !scope;
+    cancelBtn.disabled = !scope;
   }
 
   async function targetTab() {
@@ -70,7 +109,8 @@
       if (s.running) { setStatus(s.progress); return; }
       const r = s.result;
       if (!r) return;
-      if (!r.ok) finish("Failed: " + r.error);
+      if (r.cancelled) finish("Archive cancelled");
+      else if (!r.ok) finish("Failed: " + r.error);
       else if (r.empty) finish("No chats found." + (r.notes && r.notes.length ? " " + r.notes.join(" ") : ""));
       else finish("Exported " + r.exported + ", failed " + r.failed + ". Saved " + (r.savedAs || r.filename) + "." +
         (r.notes && r.notes.length ? " " + r.notes.join(" ") : ""));
@@ -82,13 +122,28 @@
       if (!input.checked || active) return;
       const scope = input.dataset.scope;
       lock(scope);
-      setStatus("Starting…");
+      cancelBtn.hidden = true;
       const tabId = await targetTab();
       if (tabId == null) { finish("No active tab."); return; }
+      if (scope === "everything") {
+        setStatus("");
+        const ok = await askConfirm(await siteName(tabId));
+        if (!ok) { finish("Nothing archived."); return; }
+      }
+      lock(scope);
+      setStatus("Starting…");
       const resp = await send(tabId, { type: "chatout-archive-everything", scope: scope });
       if (resp.error || !resp.started) { finish(resp.error || "Could not start."); return; }
       watch(tabId);
     });
+  });
+
+  cancelBtn.addEventListener("click", async function () {
+    const tabId = await targetTab();
+    if (tabId == null) return;
+    cancelBtn.disabled = true;
+    setStatus("Cancelling…");
+    await send(tabId, { type: "chatout-archive-cancel" });
   });
 
   async function init() {
@@ -96,7 +151,7 @@
     const tabId = await targetTab();
     if (tabId == null) return;
     const s = await send(tabId, { type: "chatout-archive-status" });
-    if (s.running) { lock("everything"); setStatus(s.progress); inputs.forEach(function (i) { i.checked = false; }); watch(tabId); }
+    if (s.running) { lock("running"); setStatus(s.progress); watch(tabId); }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

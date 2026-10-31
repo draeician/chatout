@@ -251,6 +251,10 @@ check("popup checkbox runs once and unchecks itself", async function (context) {
   const others = [popup.getByRole("checkbox", { name: "Archive projects only" }), popup.getByRole("checkbox", { name: "Archive chats only" })];
   for (const b of [box].concat(others)) if (await b.isChecked()) throw new Error("default should be off");
   await box.check();
+  const dialog = popup.getByRole("dialog");
+  await dialog.waitFor({ state: "visible", timeout: 5000 });
+  if (!/Archive everything on ChatGPT\? This downloads every chat and project and can be large\./.test(await dialog.innerText())) throw new Error("confirm text");
+  await dialog.getByRole("button", { name: "Archive" }).click();
   await popup.waitForFunction(function () { return document.querySelector("#chatout-archive-all").getAttribute("data-running") === "everything"; }, null, { timeout: 5000 }).catch(function () {});
   await popup.waitForFunction(function () { return /Exported/.test(document.querySelector("#chatout-archive-all").getAttribute("data-last") || ""); }, null, { timeout: 30000 });
   if (await box.isChecked()) throw new Error("box stayed checked");
@@ -284,6 +288,74 @@ check("grok archive everything dedupes and reports failures", async function (co
   if (saved.result.failed !== 1) throw new Error("failed " + saved.result.failed);
   const c = await runScope(page, context, "chats");
   if (c.names.some(function (n) { return n.startsWith("grok_lab/"); })) throw new Error(c.names.join(", "));
+  await page.close();
+});
+
+async function openPopup(context, page) {
+  const worker = await serviceWorker(context);
+  const url = page.url();
+  const tabId = await worker.evaluate(function (url) {
+    return new Promise(function (resolve) { chrome.tabs.query({}, function (t) { resolve(t.filter(function (x) { return x.url === url; }).pop().id); }); });
+  }, url);
+  const popup = await context.newPage();
+  await popup.goto("chrome-extension://" + new URL(worker.url()).host + "/popup.html?tabId=" + tabId);
+  return popup;
+}
+
+check("popup archive everything: declining the confirm starts nothing", async function (context) {
+  const page = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  await page.evaluate(function () { document.documentElement.removeAttribute("data-chatout-archive-result"); document.documentElement.removeAttribute("data-chatout-archive-progress"); });
+  const popup = await openPopup(context, page);
+  const box = popup.getByRole("checkbox", { name: "Archive everything" });
+  await box.check();
+  const dialog = popup.getByRole("dialog");
+  await dialog.waitFor({ state: "visible", timeout: 5000 });
+  if (!/on Claude\?/.test(await dialog.innerText())) throw new Error(await dialog.innerText());
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await popup.waitForFunction(function () { return !document.querySelector("#chatout-archive-all input").checked; }, null, { timeout: 5000 });
+  await popup.waitForTimeout(800);
+  const started = await page.evaluate(function () { return document.documentElement.getAttribute("data-chatout-archive-progress") || document.documentElement.getAttribute("data-chatout-archive-result"); });
+  if (started) throw new Error("archive started after decline: " + started);
+  for (const name of ["Archive everything", "Archive projects only", "Archive chats only"]) {
+    if (await popup.getByRole("checkbox", { name: name }).isDisabled()) throw new Error(name + " disabled");
+  }
+  await popup.close();
+  await page.close();
+});
+
+check("popup cancel stops a running archive and saves nothing", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  await page.evaluate(function () { document.documentElement.setAttribute("data-chatout-archive-delay", "700"); });
+  const worker = await serviceWorker(context);
+  const before = await worker.evaluate(function () { return new Promise(function (r) { chrome.downloads.search({}, function (i) { r(i.length); }); }); });
+  const popup = await openPopup(context, page);
+  const cancel = popup.locator("#chatout-archive-all-cancel");
+  if (await cancel.isVisible()) throw new Error("cancel visible while idle");
+  await popup.getByRole("checkbox", { name: "Archive chats only" }).check();
+  await cancel.waitFor({ state: "visible", timeout: 5000 });
+  if (!(await popup.getByRole("checkbox", { name: "Archive everything" }).isDisabled())) throw new Error("others not disabled");
+  await cancel.click();
+  await popup.waitForFunction(function () { return document.querySelector("#chatout-archive-all").getAttribute("data-last"); }, null, { timeout: 15000 });
+  const lastText = await popup.locator("#chatout-archive-all").getAttribute("data-last");
+  if (lastText !== "Archive cancelled") throw new Error("status: " + lastText);
+  if (await popup.getByRole("checkbox", { name: "Archive chats only" }).isChecked()) throw new Error("box stayed checked");
+  if (await popup.getByRole("checkbox", { name: "Archive everything" }).isDisabled()) throw new Error("others stayed disabled");
+  if (await cancel.isVisible()) throw new Error("cancel still visible");
+  await page.waitForTimeout(1500);
+  const after = await worker.evaluate(function () { return new Promise(function (r) { chrome.downloads.search({}, function (i) { r(i.length); }); }); });
+  if (after !== before) throw new Error("a file was saved after cancel");
+  await popup.close();
+  await page.close();
+});
+
+check("on-page cancel stops a project archive", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
+  await page.evaluate(function () { document.documentElement.setAttribute("data-chatout-archive-delay", "700"); document.documentElement.removeAttribute("data-chatout-archive-result"); });
+  await page.getByRole("button", { name: "Archive project" }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  const handle = await page.waitForFunction(function () { return document.documentElement.getAttribute("data-chatout-archive-result"); }, null, { timeout: 15000 });
+  const result = JSON.parse(await handle.jsonValue());
+  if (!result.cancelled) throw new Error(JSON.stringify(result));
   await page.close();
 });
 
