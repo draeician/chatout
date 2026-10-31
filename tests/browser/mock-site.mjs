@@ -99,6 +99,7 @@ function handleChatGpt(url) {
   if (pathName === "/g/g-p-fixture/project") return page("chatgpt-project.html");
   if (pathName === "/g/g-p-domonly/project") return page("chatgpt-dom-project.html");
   if (pathName === "/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
+  if (pathName === "/g/g-p-fixture/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
   if (pathName === "/backend-api/gizmos/g-p-fixture") return json({ name: "My Research" });
   if (pathName === "/backend-api/gizmos/g-p-domonly") return json({ name: "DOM Only" });
   if (pathName === "/backend-api/gizmos/g-p-fixture/conversations") {

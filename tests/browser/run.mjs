@@ -91,6 +91,16 @@ check("chatgpt single-chat export", async function (context) {
   await page.close();
 });
 
+check("chatgpt project chat export", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  const saved = await exportMarkdown(page);
+  if (!/^chatgpt_hello_world_.*\.md$/.test(saved.filename)) throw new Error("unexpected filename " + saved.filename);
+  if (!saved.body.includes("What is 2+2?")) throw new Error("missing user text");
+  if (!saved.body.includes("It is 4.")) throw new Error("missing reply");
+  if (/[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(saved.body)) throw new Error("export file contains CJK: " + saved.body.slice(0, 200));
+  await page.close();
+});
+
 check("claude single-chat export", async function (context) {
   const page = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   const saved = await exportMarkdown(page);
