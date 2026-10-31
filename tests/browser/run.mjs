@@ -92,8 +92,8 @@ async function runScope(page, context, scope) {
   }, null, { timeout: 30000 });
   const result = JSON.parse(await handle.jsonValue());
   if (!result.ok) throw new Error((result.error || "archive failed") + "\n" + page.__logs.join("\n"));
-  const re = new RegExp("^(chatgpt|claude|grok)-" + scope + "-\\d{8}-\\d{6}\\.zip$");
-  if (!re.test(result.filename)) throw new Error("zip name " + result.filename);
+  const re = new RegExp("^(chatgpt|claude|gemini|grok)-" + scope + "-\\d{8}-\\d{6}\\.zip$");
+  if (!re.test(result.filename)) throw new Error("zip name " + JSON.stringify(result));
   if (result.savedAs !== "chatout-archives/" + result.filename) throw new Error("savedAs " + result.savedAs);
   const worker = await serviceWorker(context);
   const saved = await waitForDownload(worker, result.downloadId);
@@ -403,6 +403,25 @@ check("include images and attachments: on saves files and rewrites links, off un
   if (off.names.some(function (n) { return n.includes("_files/"); })) throw new Error("files saved while off: " + off.names.join(", "));
   const md2 = unzipRead(off.file, "my_research/2024-05-06_packing_list_11111111.md");
   if (md2.includes("## Attachments")) throw new Error("attachments section while off");
+  await page.close();
+});
+
+check("gemini archive everything lists chats with MaZiqc", async function (context) {
+  const page = await openFixture(context, "https://gemini.google.com/app");
+  const saved = await runScope(page, context, "everything");
+  if (saved.result.exported !== 2 || saved.result.failed !== 1) throw new Error(JSON.stringify(saved.result));
+  if (!saved.names.some(function (n) { return n.startsWith("no-project/") && n.includes("packing_list"); })) throw new Error(saved.names.join(", "));
+  if (!saved.names.some(function (n) { return n.startsWith("no-project/") && n.includes("flights"); })) throw new Error(saved.names.join(", "));
+  await page.close();
+});
+
+check("gemini falls back to a sidebar without links", async function (context) {
+  const page = await openFixture(context, "https://gemini.google.com/u/1/app");
+  const saved = await runScope(page, context, "chats");
+  const mds = saved.names.filter(function (n) { return n.startsWith("no-project/") && !n.endsWith("_index.md"); });
+  if (mds.length !== 2) throw new Error(saved.names.join(", ") + " " + JSON.stringify(saved.result));
+  const top = unzipRead(saved.file, "_index.md");
+  if (!top.includes("read from the sidebar")) throw new Error(top);
   await page.close();
 });
 

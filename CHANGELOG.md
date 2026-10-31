@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.22] - 2026-10-31
+
+### Fixed
+- Gemini "Archive everything" / "Archive chats only" said "No chats found" while the sidebar listed chats. ChatOut only looked for chat links in the main area, but Gemini's sidebar sits outside it and its items are not links. It now lists chats with Gemini's own chat-list request (MaZiqc, all pages), and falls back to scanning and scrolling the sidebar (ids from links, data attributes or jslog). Chat ids work with or without the `c_` prefix.
+
 ## [3.7.0.21] - 2026-10-31
 
 ### Added

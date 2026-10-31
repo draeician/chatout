@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gemini</title>
+</head>
+<body>
+  <script>
+    window.WIZ_global_data = {
+      "SNlM0e": "fixture-at",
+      "cfb2h": "fixture-bl",
+      "FdrFJe": "fixture-sid",
+      "Im6cmf": "/_/BardChatUi"
+    };
+  </script>
+  <side-navigation>
+    <div id="side" style="height:60px;overflow:auto">
+      <div role="button" class="conversation" jslog="186014;track:generic_click;BardVeMetadataKey:[[&quot;c_a1a1a1a1a1a1&quot;,null,0]]">Packing list</div>
+      <div style="height:200px"></div>
+    </div>
+  </side-navigation>
+  <main><h1>Where should we start?</h1></main>
+  <script>
+    (function () {
+      var box = document.getElementById("side");
+      var added = false;
+      box.addEventListener("scroll", function () {
+        if (added) return;
+        if (box.scrollTop + box.clientHeight >= box.scrollHeight - 5) {
+          added = true;
+          var item = document.createElement("div");
+          item.setAttribute("role", "button");
+          item.setAttribute("jslog", "186014;BardVeMetadataKey:[[\"c_b2b2b2b2b2b2\",null,0]]");
+          item.textContent = "Flights";
+          box.appendChild(item);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

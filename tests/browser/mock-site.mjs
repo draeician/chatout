@@ -265,15 +265,27 @@ function handleGrok(url, request) {
   return null;
 }
 
+function maziqc(rows, cursor) {
+  const inner = JSON.stringify([null, cursor, rows.map(function (r) { return [r[0], r[1], null, null, null, [1719800000, 0], null, null, null, 1]; })]);
+  return ")]}'\n\n123\n" + JSON.stringify([["wrb.fr", "MaZiqc", inner, null, null, null, "generic"]]) + "\n25\n[[\"e\",4,null,null,385]]\n";
+}
+
 function handleGemini(url, request) {
+  if (url.pathname === "/app" || url.pathname === "/u/1/app") return page("gemini-home.html");
+  if (url.pathname.includes("batchexecute") && url.searchParams.get("rpcids") === "MaZiqc") {
+    if ((url.searchParams.get("source-path") || "").startsWith("/u/1")) return { status: 500, contentType: "text/plain", body: "nope" };
+    const freq = new URLSearchParams(request.postData() || "").get("f.req") || "";
+    if (freq.includes("tok2")) return { status: 200, contentType: "text/plain; charset=utf-8", body: maziqc([["c_gamma", "Broken"]], null) };
+    return { status: 200, contentType: "text/plain; charset=utf-8", body: maziqc([["c_alpha", "Packing list"], ["c_beta", "Flights"]], "tok2") };
+  }
   if (url.pathname === "/notebook/nb-fixture") return page("gemini-notebook.html");
   if (url.pathname.includes("batchexecute")) {
     const raw = request.postData() || "";
     const params = new URLSearchParams(raw);
     const freq = params.get("f.req") || "";
     if (freq.includes("c_gamma")) return { status: 500, contentType: "text/plain", body: "nope" };
-    if (freq.includes("c_alpha")) return { status: 200, contentType: "text/plain; charset=utf-8", body: geminiBodies.alpha };
-    if (freq.includes("c_beta")) return { status: 200, contentType: "text/plain; charset=utf-8", body: geminiBodies.beta };
+    if (freq.includes("c_alpha") || freq.includes("c_a1a1a1")) return { status: 200, contentType: "text/plain; charset=utf-8", body: geminiBodies.alpha };
+    if (freq.includes("c_beta") || freq.includes("c_b2b2b2")) return { status: 200, contentType: "text/plain; charset=utf-8", body: geminiBodies.beta };
     return { status: 404, contentType: "text/plain", body: "unknown rpc" };
   }
   if (url.pathname === "/favicon.ico") return { status: 204, contentType: "text/plain", body: "" };
