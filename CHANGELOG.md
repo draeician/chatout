@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.15] - 2026-10-31
+
+### Fixed
+- Hardcoded Chinese in the exporter, popup, and background is now English. Popup **Export as Markdown** shows the failure text from the content script. On a ChatGPT project chat (`/g/g-p-…/c/<id>`) that text was “No content found to export” or “Export content is empty”, previously written in Chinese. The conversation id is taken from the `/c/<id>` segment, including project URLs.
+- Stray Chinese inside the Arabic locale blurb is Arabic again. `default_locale` stays `en`, so Chrome falls back to English. Chinese, Japanese, and Korean packs under `_locales` are unchanged.
+
 ## [3.7.0.14] - 2026-10-31
 
 ### Added
