@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.21] - 2026-10-31
+
+### Added
+- Popup toggle "Include images and attachments" (off by default, saved). When on, every archive (the three popup checkboxes and the on-page "Archive project" button) saves each chat's images and attachments in `<chat>_files/` next to its `.md`, points the markdown at the local copies, and adds an "Attachments" list. Limits: 50 MB per file, 1 GB per archive. A file that can't be saved is listed under "Files not saved" in `_index.md`; the archive still finishes.
+- Sources: ChatGPT uploaded and generated files (`/backend-api/files/<id>/download`), Claude files and pasted text (saved as `.txt`), Grok generated images and attachments (assets.grok.com), and on every site any image linked in the exported markdown (this is what covers Gemini).
+
 ## [3.7.0.20] - 2026-10-31
 
 ### Added

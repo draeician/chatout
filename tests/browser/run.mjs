@@ -359,6 +359,53 @@ check("on-page cancel stops a project archive", async function (context) {
   await page.close();
 });
 
+async function setIncludeFiles(context, page, on) {
+  const popup = await openPopup(context, page);
+  await popup.waitForSelector("#chatout-archive-all[data-files-ready='1']", { timeout: 5000 });
+  const toggle = popup.getByRole("checkbox", { name: "Include images and attachments" });
+  if ((await toggle.isChecked()) !== on) {
+    await toggle.click();
+    await popup.waitForSelector("#chatout-archive-all[data-files-saved='" + on + "']", { timeout: 5000 });
+  }
+  await popup.reload();
+  await popup.waitForSelector("#chatout-archive-all[data-files-ready='1']", { timeout: 5000 });
+  if ((await popup.getByRole("checkbox", { name: "Include images and attachments" }).isChecked()) !== on) throw new Error("toggle not saved");
+  await popup.close();
+}
+
+check("include images and attachments: on saves files and rewrites links, off unchanged", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
+  const popupDefault = await openPopup(context, page);
+  await popupDefault.waitForSelector("#chatout-archive-all[data-files-ready='1']", { timeout: 5000 });
+  if (await popupDefault.getByRole("checkbox", { name: "Include images and attachments" }).isChecked()) throw new Error("default should be off");
+  await popupDefault.close();
+  await setIncludeFiles(context, page, true);
+  const on = await archiveProject(page, context);
+  const img = "my_research/2024-05-06_packing_list_11111111_files/photo.png";
+  if (!on.names.includes(img)) throw new Error("missing " + img + " in " + on.names.join(", "));
+  const md = unzipRead(on.file, "my_research/2024-05-06_packing_list_11111111.md");
+  if (!md.includes("(2024-05-06_packing_list_11111111_files/photo.png)")) throw new Error("link not rewritten\n" + md);
+  if (md.includes("file-service://")) throw new Error("remote pointer left\n" + md);
+  if (!md.includes("notes.pdf (not saved")) throw new Error("failed file not noted\n" + md);
+  const index = unzipRead(on.file, "my_research/_index.md");
+  if (!index.includes("## Files not saved") || !index.includes("notes.pdf")) throw new Error(index);
+  if (on.result.exported !== 3) throw new Error("archive should not fail on a file: " + JSON.stringify(on.result));
+
+  const cpage = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  const c = await runScope(cpage, context, "everything");
+  if (!c.names.some(function (n) { return /^ops_notes\/.*_files\/diagram\.png$/.test(n); })) throw new Error(c.names.join(", "));
+  const pasted = c.names.find(function (n) { return /_files\/pasted\.txt$/.test(n); });
+  if (!pasted || unzipRead(c.file, pasted).trim() !== "pasted log line") throw new Error("pasted text " + c.names.join(", "));
+  await cpage.close();
+
+  await setIncludeFiles(context, page, false);
+  const off = await archiveProject(page, context);
+  if (off.names.some(function (n) { return n.includes("_files/"); })) throw new Error("files saved while off: " + off.names.join(", "));
+  const md2 = unzipRead(off.file, "my_research/2024-05-06_packing_list_11111111.md");
+  if (md2.includes("## Attachments")) throw new Error("attachments section while off");
+  await page.close();
+});
+
 async function main() {
   const built = spawnSync(process.execPath, ["scripts/build-extension.mjs"], { cwd: root, stdio: "inherit" });
   if (built.status !== 0) process.exit(built.status || 1);

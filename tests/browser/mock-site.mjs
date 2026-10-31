@@ -58,7 +58,12 @@ function chatgptConversation(title, user, assistant) {
 
 const chatgptBodies = {
   [CHATGPT_CHAT]: chatgptConversation("Hello World", "What is 2+2?", "It is 4."),
-  [GPT_A]: chatgptConversation("Packing list", "Bring a raincoat", "Pack a light shell."),
+  [GPT_A]: (function () {
+    const c = chatgptConversation("Packing list", "Bring a raincoat", "Pack a light shell.");
+    c.mapping.n1.message.content = { content_type: "multimodal_text", parts: [{ content_type: "image_asset_pointer", asset_pointer: "file-service://file-img1" }, "Bring a raincoat"] };
+    c.mapping.n1.message.metadata = { attachments: [{ id: "file-img1", name: "photo.png" }, { id: "file-doc1", name: "notes.pdf" }] };
+    return c;
+  })(),
   [GPT_B]: chatgptConversation("Hello/World?", "Slash title question", "Use a safe filename."),
   [GPT_C]: chatgptConversation("Packing list", "Second packing note", "Duplicate titles stay distinct."),
   [GPT_LOOSE]: chatgptConversation("Loose chat", "Not in a project", "Saved under no-project."),
@@ -103,6 +108,9 @@ function handleChatGpt(url) {
   if (pathName === "/g/g-p-domonly/project") return page("chatgpt-dom-project.html");
   if (pathName === "/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
   if (pathName === "/g/g-p-fixture/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
+  if (pathName === "/backend-api/files/file-img1/download") return json({ download_url: "https://chatgpt.com/files-fixture/img1.png", file_name: "photo.png" });
+  if (pathName === "/backend-api/files/file-doc1/download") return { status: 404, contentType: "text/plain", body: "gone" };
+  if (pathName === "/files-fixture/img1.png") return { status: 200, contentType: "image/png", body: Buffer.from("89504e470d0a1a0a", "hex") };
   if (pathName === "/backend-api/gizmos/snorlax/sidebar") {
     return json({ items: [{ gizmo: { gizmo: { id: "g-p-fixture", display: { name: "My Research" } } }, conversations: { items: [] } }], cursor: null });
   }
@@ -160,6 +168,7 @@ function handleClaude(url) {
   const pathName = url.pathname;
   if (pathName === "/chat/" + CHATGPT_CHAT) return page("claude-chat.html");
   if (pathName === "/project/" + CLAUDE_PROJECT) return page("claude-project.html");
+  if (pathName === "/api/org-fixture/files/f1/preview") return { status: 200, contentType: "image/png", body: Buffer.from("89504e470d0a1a0a", "hex") };
   if (pathName === "/api/organizations/org-fixture/projects") {
     return json([{ uuid: CLAUDE_PROJECT, name: "Ops notes" }]);
   }
@@ -204,7 +213,7 @@ function handleClaude(url) {
       uuid: conv[1],
       name: "chat",
       chat_messages: [
-        { sender: "human", text: pair[0] },
+        { sender: "human", text: pair[0], files_v2: conv[1] === CLAUDE_P1 ? [{ file_uuid: "f1", file_name: "diagram.png", preview_url: "/api/org-fixture/files/f1/preview" }] : [], attachments: conv[1] === CLAUDE_P1 ? [{ file_name: "pasted", extracted_content: "pasted log line" }] : [] },
         { sender: "assistant", text: pair[1] }
       ]
     });
