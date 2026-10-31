@@ -868,6 +868,12 @@
     return { via: "anchor" };
   }
 
+  /* Every zip has one top-level folder named like the zip, so unzipping makes its own folder. */
+  function buildRootedZip(zipName, files) {
+    const root = String(zipName).replace(/\.zip$/i, "");
+    return lib.buildStoredZip(files.map(function (f) { return Object.assign({}, f, { name: root + "/" + f.name }); }));
+  }
+
   async function saveZip(filename, bytes) {
     let downloadError = "";
     if (api && api.runtime && api.runtime.sendMessage && bytes.length < 32000000) {
@@ -1005,7 +1011,7 @@
       const zipName = lib.zipDownloadName(project.provider, projectName, new Date());
       setProgress("Saving " + rows.length + " chat" + (rows.length === 1 ? "" : "s") + "…");
       checkCancel();
-      const bytes = lib.buildStoredZip(files);
+      const bytes = buildRootedZip(zipName, files);
       const saved = await saveZip(zipName, bytes);
       const summary = "Exported " + rows.length + ", failed " + failures.length + ".";
       setProgress(summary + " Saved " + zipName + ".");
@@ -1282,7 +1288,7 @@
       const zipName = lib.zipDownloadName(site, scope === "chats" ? "chats" : scope, new Date());
       setProgress("Saving " + exported + " chats…");
       checkCancel();
-      const saved = await saveZip(zipName, lib.buildStoredZip(files));
+      const saved = await saveZip(zipName, buildRootedZip(zipName, files));
       const summary = "Exported " + exported + ", failed " + failures.length + ".";
       setProgress(summary + " Saved " + zipName + ".");
       lastResult = {

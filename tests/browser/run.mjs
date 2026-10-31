@@ -10,22 +10,36 @@ import { closeExtension, launchExtension, serviceWorker, waitForDownload } from 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const extensionPath = root;
 
-function unzipRead(file, name) {
-  return execFileSync("python3", [
-    "-c",
-    "import zipfile,sys; print(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]).decode())",
-    file,
-    name
-  ], { encoding: "utf8" });
-}
+const zipRoots = new Map();
 
-function unzipNames(file) {
+function rawZipNames(file) {
   const out = execFileSync("python3", [
     "-c",
     "import zipfile,sys; print('\\n'.join(zipfile.ZipFile(sys.argv[1]).namelist()))",
     file
   ], { encoding: "utf8" });
   return out.trim().split("\n").filter(Boolean);
+}
+
+function unzipRead(file, name) {
+  const root = zipRoots.get(file);
+  return execFileSync("python3", [
+    "-c",
+    "import zipfile,sys; print(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]).decode())",
+    file,
+    root ? root + "/" + name : name
+  ], { encoding: "utf8" });
+}
+
+/* Asserts the zip has exactly one top-level folder named like the zip, then returns paths inside it. */
+function unzipNames(file, zipName) {
+  const names = rawZipNames(file);
+  if (!zipName) return names;
+  const root = String(zipName).replace(/\.zip$/i, "");
+  const bad = names.filter(function (n) { return !n.startsWith(root + "/"); });
+  if (bad.length || !names.length) throw new Error("zip must have one root folder " + root + "/: " + names.join(", "));
+  zipRoots.set(file, root);
+  return names.map(function (n) { return n.slice(root.length + 1); });
 }
 
 async function openFixture(context, url) {
@@ -77,7 +91,7 @@ async function archiveProject(page, context) {
   if (result.savedAs !== "chatout-archives/" + result.filename) throw new Error("savedAs " + result.savedAs);
   const worker = await serviceWorker(context);
   const saved = await waitForDownload(worker, result.downloadId);
-  return { result: result, file: saved.filename, names: unzipNames(saved.filename) };
+  return { result: result, file: saved.filename, names: unzipNames(saved.filename, result.filename) };
 }
 
 async function runScope(page, context, scope) {
@@ -97,7 +111,7 @@ async function runScope(page, context, scope) {
   if (result.savedAs !== "chatout-archives/" + result.filename) throw new Error("savedAs " + result.savedAs);
   const worker = await serviceWorker(context);
   const saved = await waitForDownload(worker, result.downloadId);
-  return { result: result, file: saved.filename, names: unzipNames(saved.filename) };
+  return { result: result, file: saved.filename, names: unzipNames(saved.filename, result.filename) };
 }
 
 const tests = [];
