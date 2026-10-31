@@ -19,6 +19,44 @@
     : globalThis.chrome;
 
   let running = false;
+  let lastResult = null;
+  let cancelRequested = false;
+  let abortCtl = null;
+  let cancelEl = null;
+  const CANCELLED = "Archive cancelled";
+
+  function checkCancel() {
+    if (cancelRequested) throw new Error(CANCELLED);
+  }
+
+  function beginRun() {
+    cancelRequested = false;
+    abortCtl = typeof AbortController === "function" ? new AbortController() : null;
+    if (cancelEl) cancelEl.hidden = false;
+  }
+
+  function endRun() {
+    abortCtl = null;
+    if (cancelEl) cancelEl.hidden = true;
+  }
+
+  function cancelRun() {
+    if (!running) return false;
+    cancelRequested = true;
+    if (abortCtl) { try { abortCtl.abort(); } catch (e) { /* ignore */ } }
+    setProgress("Cancelling…");
+    return true;
+  }
+
+  function failure(e, failures) {
+    if (cancelRequested) {
+      setProgress(CANCELLED);
+      return { ok: false, cancelled: true, error: CANCELLED, exported: 0, failed: 0, failures: [] };
+    }
+    const message = String((e && e.message) || e).slice(0, 300);
+    setProgress(message);
+    return { ok: false, error: message, exported: 0, failed: failures.length, failures: failures };
+  }
   let statusEl = null;
   let buttonEl = null;
 
@@ -35,6 +73,7 @@
   }
 
   function setResult(result) {
+    lastResult = result;
     document.documentElement.setAttribute("data-chatout-archive-result", JSON.stringify(result));
   }
 
@@ -60,8 +99,9 @@
   async function fetchRetry(url, options, pause) {
     let lastError = null;
     for (let attempt = 0; attempt < 4; attempt += 1) {
+      checkCancel();
       try {
-        const res = await fetch(url, options);
+        const res = await fetch(url, abortCtl ? Object.assign({ signal: abortCtl.signal }, options) : options);
         if (res.status === 429 || res.status === 503) {
           lastError = new Error("HTTP " + res.status);
           const retryAfter = Number(res.headers.get("retry-after"));
@@ -539,6 +579,7 @@
       return;
     }
     running = true;
+    beginRun();
     if (buttonEl) buttonEl.disabled = true;
     document.documentElement.removeAttribute("data-chatout-archive-result");
     const pause = delayMs();
@@ -586,6 +627,7 @@
         ctx.tokens = geminiTokens();
       }
 
+      checkCancel();
       let chats = listed.items || [];
       let listNote = listed.note || "";
       if (!chats.length) {
@@ -622,12 +664,14 @@
           });
         }
         if (pause) await lib.sleep(pause);
+        checkCancel();
       }
 
       const folder = paths[0] ? paths[0].split("/")[0] : lib.sanitizeSegment(projectName, "project");
       files.push({ name: folder + "/_index.md", text: indexMarkdown(projectName, rows, failures, listNote) });
       const zipName = lib.zipDownloadName(project.provider, projectName, new Date());
       setProgress("Saving " + rows.length + " chat" + (rows.length === 1 ? "" : "s") + "…");
+      checkCancel();
       const bytes = lib.buildStoredZip(files);
       const saved = await saveZip(zipName, bytes);
       const summary = "Exported " + rows.length + ", failed " + failures.length + ".";
@@ -646,17 +690,15 @@
         listNote: listNote
       });
     } catch (e) {
-      const message = String((e && e.message) || e).slice(0, 300);
-      setProgress(message);
-      setResult({ ok: false, error: message, exported: 0, failed: 0, failures: failures });
+      setResult(failure(e, failures));
     } finally {
       running = false;
+      endRun();
       if (buttonEl) buttonEl.disabled = false;
     }
   }
 
   /* ---- Archive everything: every project plus chats outside projects, current site only. ---- */
-  let lastResult = null;
 
   async function listChatGptProjects(headers, pause) {
     const out = [];
@@ -747,6 +789,7 @@
       return { started: false, error: lastResult.error };
     }
     running = true;
+    beginRun();
     lastResult = null;
     document.documentElement.removeAttribute("data-chatout-archive-result");
     const pause = delayMs();
@@ -822,6 +865,7 @@
         loose = scope === "projects" ? [] : await collectDomChats("gemini", pause);
       }
 
+      checkCancel();
       // Dedupe: each conversation id once, project folder wins.
       const work = [];
       groups.forEach(function (g) {
@@ -865,6 +909,8 @@
             failures.push(f);
           }
           if (pause) await lib.sleep(pause);
+          checkCancel();
+        checkCancel();
         }
         exported += rows.length;
         g.exported = rows.length;
@@ -891,6 +937,7 @@
 
       const zipName = lib.zipDownloadName(site, scope === "chats" ? "chats" : scope, new Date());
       setProgress("Saving " + exported + " chats…");
+      checkCancel();
       const saved = await saveZip(zipName, lib.buildStoredZip(files));
       const summary = "Exported " + exported + ", failed " + failures.length + ".";
       setProgress(summary + " Saved " + zipName + ".");
@@ -902,12 +949,11 @@
       };
       setResult(lastResult);
     } catch (e) {
-      const message = String((e && e.message) || e).slice(0, 300);
-      setProgress(message);
-      lastResult = { ok: false, error: message, exported: 0, failed: failures.length, failures: failures };
+      lastResult = failure(e, failures);
       setResult(lastResult);
     } finally {
       running = false;
+      endRun();
     }
     return { started: true };
   }
@@ -920,6 +966,10 @@
         lastResult = null;
         archiveEverything(msg.scope);
         sendResponse({ started: true });
+        return;
+      }
+      if (msg.type === "chatout-archive-cancel") {
+        sendResponse({ cancelled: cancelRun() });
         return;
       }
       if (msg.type === "chatout-archive-status") {
@@ -964,15 +1014,20 @@
       ".panel{position:fixed;top:12px;right:12px;z-index:2147483646;display:flex;flex-direction:column;gap:6px;align-items:flex-end;font-family:system-ui,sans-serif}",
       "button{appearance:none;border:0;border-radius:999px;background:#111827;color:#f9fafb;font:600 14px/1.2 system-ui,sans-serif;padding:10px 14px;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25)}",
       "button:disabled{opacity:.6;cursor:progress}",
+      "button[hidden]{display:none}",
       ".status{max-width:320px;background:#fff;color:#111827;border-radius:10px;padding:8px 10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)}",
       "</style>",
       "<div class='panel'>",
       "<button type='button' id='chatout-archive-project'>Archive project</button>",
+      "<button type='button' id='chatout-archive-cancel' hidden>Cancel</button>",
       "<div class='status' id='chatout-archive-status' role='status' aria-live='polite'>Save every chat in this project.</div>",
       "</div>"
     ].join("");
     buttonEl = shadow.getElementById("chatout-archive-project");
     statusEl = shadow.getElementById("chatout-archive-status");
+    cancelEl = shadow.getElementById("chatout-archive-cancel");
+    cancelEl.hidden = !running;
+    cancelEl.addEventListener("click", function () { cancelRun(); });
     buttonEl.addEventListener("click", function () { archiveProject(); });
     document.documentElement.appendChild(host);
   }
@@ -981,6 +1036,7 @@
     const command = document.documentElement.getAttribute("data-chatout-command") || "";
     if (command === "archive-project") archiveProject();
     else if (command.startsWith("archive-everything")) archiveEverything(command.split(":")[1]);
+    else if (command === "archive-cancel") cancelRun();
     else if (command === "export-markdown") exportCurrent();
   }, true);
 

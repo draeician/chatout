@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.20] - 2026-10-31
+
+### Added
+- Cancel button in the popup's "Archive this site" section and next to the on-page "Archive project" button, shown only while an archive is running. Cancel stops further requests right away, saves nothing, unchecks the box, re-enables the others, and shows "Archive cancelled".
+- "Archive everything" now asks first: "Archive everything on <site>? This downloads every chat and project and can be large." Choosing Cancel unchecks the box and starts nothing.
+
 ## [3.7.0.19] - 2026-10-31
 
 ### Added
