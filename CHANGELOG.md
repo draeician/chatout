@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.18] - 2026-10-31
+
+### Added
+- Popup checkboxes "Archive everything", "Archive projects only" and "Archive chats only" (all off by default). Checking one starts that archive for the current site right away, the others are disabled while it runs, and the box unchecks itself when done. Zips: `<provider>-everything|projects|chats-<YYYYMMDD-HHMMSS>.zip` in `Downloads/chatout-archives/`, one folder per project plus `no-project/`, a top-level `_index.md`, and each chat saved once (its project folder wins).
+- ChatGPT and Claude list every project and every chat through their APIs. Gemini has no project list, so only sidebar chats are saved, under `no-project/`.
+
 ## [3.7.0.17] - 2026-10-31
 
 ### Fixed

@@ -80,6 +80,26 @@ async function archiveProject(page, context) {
   return { result: result, file: saved.filename, names: unzipNames(saved.filename) };
 }
 
+async function runScope(page, context, scope) {
+  await page.evaluate(function (scope) {
+    document.documentElement.setAttribute("data-chatout-archive-delay", "0");
+    document.documentElement.removeAttribute("data-chatout-archive-result");
+    document.documentElement.setAttribute("data-chatout-command", "archive-everything:" + scope);
+    document.dispatchEvent(new Event("chatout-command"));
+  }, scope);
+  const handle = await page.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-archive-result");
+  }, null, { timeout: 30000 });
+  const result = JSON.parse(await handle.jsonValue());
+  if (!result.ok) throw new Error((result.error || "archive failed") + "\n" + page.__logs.join("\n"));
+  const re = new RegExp("^(chatgpt|claude)-" + scope + "-\\d{8}-\\d{6}\\.zip$");
+  if (!re.test(result.filename)) throw new Error("zip name " + result.filename);
+  if (result.savedAs !== "chatout-archives/" + result.filename) throw new Error("savedAs " + result.savedAs);
+  const worker = await serviceWorker(context);
+  const saved = await waitForDownload(worker, result.downloadId);
+  return { result: result, file: saved.filename, names: unzipNames(saved.filename) };
+}
+
 const tests = [];
 function check(name, fn) { tests.push({ name: name, fn: fn }); }
 
@@ -182,6 +202,64 @@ check("gemini notebook archive", async function (context) {
   if (!body.includes("# You Asked:") || !body.includes("Pack socks")) throw new Error(body);
   const index = unzipRead(saved.file, "trip_notebook/_index.md");
   if (!index.includes("Hotels")) throw new Error(index);
+  await page.close();
+});
+
+check("chatgpt archive everything dedupes", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  const saved = await runScope(page, context, "everything");
+  const names = saved.names;
+  if (!names.includes("_index.md") || !names.includes("my_research/_index.md") || !names.includes("no-project/_index.md")) throw new Error(names.join(", "));
+  const packing = names.filter(function (n) { return n.includes("11111111"); });
+  if (packing.length !== 1 || !packing[0].startsWith("my_research/")) throw new Error("dedupe " + names.join(", "));
+  if (!names.some(function (n) { return n.startsWith("no-project/") && n.includes("loose_chat"); })) throw new Error("loose " + names.join(", "));
+  const top = unzipRead(saved.file, "_index.md");
+  if (!top.includes("my_research/") || !top.includes("no-project/")) throw new Error(top);
+  await page.close();
+});
+
+check("chatgpt projects only and chats only", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  const p = await runScope(page, context, "projects");
+  if (p.names.some(function (n) { return n.startsWith("no-project/"); }) || !p.names.includes("my_research/_index.md")) throw new Error(p.names.join(", "));
+  const c = await runScope(page, context, "chats");
+  if (c.names.some(function (n) { return n.startsWith("my_research/"); })) throw new Error(c.names.join(", "));
+  if (c.names.filter(function (n) { return n.startsWith("no-project/") && !n.endsWith("_index.md"); }).length !== 1) throw new Error("chats " + c.names.join(", "));
+  await page.close();
+});
+
+check("claude archive everything dedupes", async function (context) {
+  const page = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  const saved = await runScope(page, context, "everything");
+  const deploy = saved.names.filter(function (n) { return n.includes("11111111"); });
+  if (deploy.length !== 1 || !deploy[0].startsWith("ops_notes/")) throw new Error(saved.names.join(", "));
+  if (!saved.names.some(function (n) { return n.startsWith("no-project/") && n.includes("solo"); })) throw new Error(saved.names.join(", "));
+  await page.close();
+});
+
+check("popup checkbox runs once and unchecks itself", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  await page.evaluate(function () { document.documentElement.setAttribute("data-chatout-archive-delay", "0"); });
+  const worker = await serviceWorker(context);
+  const tabId = await worker.evaluate(function () {
+    return new Promise(function (resolve) { chrome.tabs.query({ url: "https://chatgpt.com/c/*" }, function (t) { resolve(t[t.length - 1].id); }); });
+  });
+  const extId = new URL(worker.url()).host;
+  const popup = await context.newPage();
+  await popup.goto("chrome-extension://" + extId + "/popup.html?tabId=" + tabId);
+  const box = popup.getByRole("checkbox", { name: "Archive everything" });
+  const others = [popup.getByRole("checkbox", { name: "Archive projects only" }), popup.getByRole("checkbox", { name: "Archive chats only" })];
+  for (const b of [box].concat(others)) if (await b.isChecked()) throw new Error("default should be off");
+  await box.check();
+  await popup.waitForFunction(function () { return document.querySelector("#chatout-archive-all").getAttribute("data-running") === "everything"; }, null, { timeout: 5000 }).catch(function () {});
+  await popup.waitForFunction(function () { return /Exported/.test(document.querySelector("#chatout-archive-all").getAttribute("data-last") || ""); }, null, { timeout: 30000 });
+  if (await box.isChecked()) throw new Error("box stayed checked");
+  for (const b of [box].concat(others)) if (await b.isDisabled()) throw new Error("box stayed disabled");
+  const last = await popup.locator("#chatout-archive-all").getAttribute("data-last");
+  if (!/chatout-archives\/chatgpt-everything-/.test(last)) throw new Error(last);
+  await popup.reload();
+  if (await popup.getByRole("checkbox", { name: "Archive everything" }).isChecked()) throw new Error("re-run on reopen");
+  await popup.close();
   await page.close();
 });
 
