@@ -73,7 +73,7 @@ async function archiveProject(page, context) {
   }));
   if (!result.ok) throw new Error((result.error || "archive failed") + "\n" + page.__logs.join("\n"));
   if (result.downloadId == null) throw new Error("archive did not use chrome.downloads\n" + JSON.stringify(result));
-  if (!/^(chatgpt|claude|gemini)-[\p{L}\p{N}_-]+-\d{8}-\d{6}\.zip$/u.test(result.filename)) throw new Error("zip name " + result.filename);
+  if (!/^(chatgpt|claude|gemini|grok)-[\p{L}\p{N}_-]+-\d{8}-\d{6}\.zip$/u.test(result.filename)) throw new Error("zip name " + result.filename);
   if (result.savedAs !== "chatout-archives/" + result.filename) throw new Error("savedAs " + result.savedAs);
   const worker = await serviceWorker(context);
   const saved = await waitForDownload(worker, result.downloadId);
@@ -92,7 +92,7 @@ async function runScope(page, context, scope) {
   }, null, { timeout: 30000 });
   const result = JSON.parse(await handle.jsonValue());
   if (!result.ok) throw new Error((result.error || "archive failed") + "\n" + page.__logs.join("\n"));
-  const re = new RegExp("^(chatgpt|claude)-" + scope + "-\\d{8}-\\d{6}\\.zip$");
+  const re = new RegExp("^(chatgpt|claude|grok)-" + scope + "-\\d{8}-\\d{6}\\.zip$");
   if (!re.test(result.filename)) throw new Error("zip name " + result.filename);
   if (result.savedAs !== "chatout-archives/" + result.filename) throw new Error("savedAs " + result.savedAs);
   const worker = await serviceWorker(context);
@@ -260,6 +260,30 @@ check("popup checkbox runs once and unchecks itself", async function (context) {
   await popup.reload();
   if (await popup.getByRole("checkbox", { name: "Archive everything" }).isChecked()) throw new Error("re-run on reopen");
   await popup.close();
+  await page.close();
+});
+
+check("grok project archive", async function (context) {
+  const page = await openFixture(context, "https://grok.com/project/ws-fixture");
+  const saved = await archiveProject(page, context);
+  if (saved.result.exported !== 1 || saved.result.failed !== 0) throw new Error("summary " + JSON.stringify(saved.result));
+  if (!/^grok-grok-lab-\d{8}-\d{6}\.zip$/.test(saved.result.filename)) throw new Error(saved.result.filename);
+  const f = saved.names.find(function (n) { return n.startsWith("grok_lab/") && n.includes("lab_chat"); });
+  if (!f) throw new Error(saved.names.join(", "));
+  const body = unzipRead(saved.file, f);
+  if (body.indexOf("Lab question") < 0 || body.indexOf("Lab question") > body.indexOf("Lab answer")) throw new Error(body);
+  await page.close();
+});
+
+check("grok archive everything dedupes and reports failures", async function (context) {
+  const page = await openFixture(context, "https://grok.com/");
+  const saved = await runScope(page, context, "everything");
+  const k1 = saved.names.filter(function (n) { return n.includes("lab_chat"); });
+  if (k1.length !== 1 || !k1[0].startsWith("grok_lab/")) throw new Error(saved.names.join(", "));
+  if (!saved.names.some(function (n) { return n.startsWith("no-project/") && n.includes("loose_grok"); })) throw new Error(saved.names.join(", "));
+  if (saved.result.failed !== 1) throw new Error("failed " + saved.result.failed);
+  const c = await runScope(page, context, "chats");
+  if (c.names.some(function (n) { return n.startsWith("grok_lab/"); })) throw new Error(c.names.join(", "));
   await page.close();
 });
 

@@ -48,7 +48,7 @@
       try {
         api.tabs.sendMessage(tabId, msg, function (resp) {
           const err = api.runtime.lastError;
-          resolve(err ? { error: "Open ChatGPT, Claude, or Gemini in this tab first." } : (resp || {}));
+          resolve(err ? { error: "Open ChatGPT, Claude, Gemini, or Grok in this tab first." } : (resp || {}));
         });
       } catch (e) { resolve({ error: String((e && e.message) || e) }); }
     });
