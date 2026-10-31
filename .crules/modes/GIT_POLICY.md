@@ -24,19 +24,11 @@ All commits MUST follow the Conventional Commits specification:
 
 ### Version Bump Rules
 
-Version master is **`manifest.json`** (`version` field). Use the repo’s Chrome multi-part scheme and keep versions **monotonic**.
+Version master is **`manifest.json`** (`version` field). There is no second runtime version: `package.json` has none, and popup and Settings read the manifest live. Keep versions **monotonic**.
 
-| Type       | Default intent                         |
-|------------|----------------------------------------|
-| `feat`     | Larger (minor-ish) segment bump        |
-| `fix`      | Patch / build segment bump             |
-| `docs`     | Patch / build segment bump (or skip if docs-only and user prefers) |
-| `chore`    | Patch / build segment bump             |
-| `refactor` | Patch / build segment bump             |
+On every loadable change, increment the **last** segment by 1 (for example `3.7.0.13` → `3.7.0.14`) and add a `CHANGELOG.md` heading for that exact version. This applies to `feat`, `fix`, `docs`, `chore`, and `refactor`. A docs-only change that does not ship in the extension can skip the bump when the user prefers that. Use a larger segment only when the user asks for one. A `BREAKING CHANGE:` footer or `!` after the type implies a major-segment bump.
 
-A `BREAKING CHANGE:` footer or `!` after the type implies a major-segment bump.
-
-**Cross-file consistency**: There is no second runtime version file. After packaging, the zip name from `scripts/package-extension.sh` should match `manifest.json`. Keep `CHANGELOG.md` aligned on releases.
+**Cross-file consistency**: After packaging, the zip name from `scripts/package-extension.sh` should match `manifest.json`. Keep `CHANGELOG.md` aligned on the same version. The build does not stamp the version into JS.
 
 ### Rules
 

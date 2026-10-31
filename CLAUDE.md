@@ -49,8 +49,8 @@ After building, reload the unpacked extension at `chrome://extensions` to pick u
 
 ## Release process
 
-- Version is tracked in `manifest.json` (`version` field) and must be bumped whenever verifying a fix loaded correctly in `chrome://extensions`.
-- `CHANGELOG.md` follows Keep a Changelog format — add an entry per release.
+- Version is tracked only in `manifest.json` (`version`). On every loadable change, increment the last segment by 1 (for example `3.7.0.13` → `3.7.0.14`) before verifying the reload in `chrome://extensions`. Popup and Settings read that field live. The build does not embed the version in JS, and `package.json` has no product version.
+- `CHANGELOG.md` follows Keep a Changelog format — add an entry whose heading matches `manifest.json` for that release.
 - `dist/` holds packaged release zips and release notes, produced by `scripts/package-extension.sh`.
 - Feature work happens on branches named like `fix/<short-description>`.
 
