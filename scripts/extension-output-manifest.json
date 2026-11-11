@@ -5,6 +5,7 @@
   "content-scripts/project-archive.js": "src/content/project-archive.js",
   "content-scripts/context-gauge-lib.js": "src/content/context-gauge-lib.js",
   "content-scripts/chatgpt-context.js": "src/content/chatgpt-context.js",
+  "content-scripts/chatgpt-fetch-hook.js": "src/content/chatgpt-fetch-hook.js",
   "options-context-limit.js": "src/options/context-limit.js",
   "content-scripts/start.js": "src/content/start.js",
   "content-scripts/config.js": "src/content/config.js",
