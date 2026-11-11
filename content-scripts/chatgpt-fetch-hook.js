@@ -173,6 +173,25 @@
     return root;
   }
 
+  window.__chatoutContextDebug = function () {
+    return new Promise(function (resolve) {
+      var timer = setTimeout(function () {
+        window.removeEventListener("message", onMsg);
+        resolve("chatout context debug\nNo reply. Reload the page and try again.");
+      }, 3000);
+      function onMsg(ev) {
+        if (ev.source !== window || !ev.data || ev.data.source !== "chatout-context-debug-out") return;
+        clearTimeout(timer);
+        window.removeEventListener("message", onMsg);
+        var text = String(ev.data.text || "");
+        console.log(text);
+        resolve(text);
+      }
+      window.addEventListener("message", onMsg);
+      document.dispatchEvent(new Event("chatout-context-debug"));
+    });
+  };
+
   window.addEventListener("message", function (ev) {
     if (ev.source !== window) return;
     var msg = ev.data;

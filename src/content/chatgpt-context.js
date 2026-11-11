@@ -431,7 +431,7 @@
     }
     var resolved = lib.resolveLimit(counted.model, override);
     var limit = mode === "dom" ? lib.visibleOnlyLimit(resolved.limit) : resolved.limit;
-    render(lib.usage(counted.visibleTokens, counted.hiddenTokens, limit, mode, resolved, counted.categories), source);
+    render(lib.usage(counted.visibleTokens, counted.hiddenTokens, limit, mode, resolved, counted.categories, { toolCapped: counted.toolCapped }), source);
   }
 
   function schedule() {
@@ -500,6 +500,16 @@
       if (area === "local" && changes && changes.chatoutContextLimit) schedule();
     });
   }
+
+  document.addEventListener("chatout-context-debug", function () {
+    var id = lib.conversationIdFromPath(location.pathname);
+    var data = cache.id === id && cache.data ? cache.data : assemble(id);
+    var text = data && lib.debugConversation
+      ? lib.debugConversation(data)
+      : "chatout context debug\nNo conversation JSON is loaded. Open a chat and try again.";
+    console.log(text);
+    try { window.postMessage({ source: "chatout-context-debug-out", text: text }, location.origin); } catch (e) {}
+  });
 
   observe();
   lastSig = domSignature();

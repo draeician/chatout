@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM, GAUGE_TURN, GAUGE_MESSAGES, GAUGE_PAGE, GAUGE_STABLE, GAUGE_META } from "./mock-site.mjs";
+import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM, GAUGE_TURN, GAUGE_MESSAGES, GAUGE_PAGE, GAUGE_STABLE, GAUGE_META, GAUGE_GITHUB } from "./mock-site.mjs";
 import { closeExtension, launchExtension, serviceWorker, waitForDownload } from "./launch.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -594,6 +594,25 @@ check("chatgpt context gauge drops the idle label and tracks the conversation", 
   const metaLabel = await meta.getByRole("meter").innerText();
   if (/100%\+/.test(metaLabel)) throw new Error("short chat rendered full: " + metaLabel);
   await meta.close();
+
+  const github = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_GITHUB);
+  await github.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "json"
+      && document.documentElement.getAttribute("data-chatout-context-limit") === "1050000";
+  }, null, { timeout: 8000 });
+  const githubVisible = Number(await github.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-visible"); }));
+  const githubTokens = Number(await github.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-tokens"); }));
+  if (!(githubVisible > 0 && githubTokens < githubVisible * 3)) {
+    throw new Error("github payload inflated the gauge " + githubTokens + " visible " + githubVisible);
+  }
+  const githubTip = await github.getByRole("meter").getAttribute("title");
+  if (!/Tool output capped/.test(githubTip)) throw new Error(githubTip);
+  if (/Ask for a resume summary now/.test(githubTip)) throw new Error("resume hint on a connector chat " + githubTip);
+  if (/uncertain/.test(await github.getByRole("meter").innerText())) throw new Error("connector chat labeled uncertain");
+  const report = await github.evaluate(function () { return window.__chatoutContextDebug(); });
+  if (!/stored-payload/.test(report) || !/tether-cache/.test(report) || !/role=tool/.test(report)) throw new Error(report);
+  if (report.length > 25000 || /FFFFFFF/.test(report)) throw new Error("debug report leaked message text " + report.length);
+  await github.close();
 
   const claude = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   await claude.waitForTimeout(400);

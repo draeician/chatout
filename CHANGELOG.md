@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.28] - 2026-11-11
+
+### Fixed
+- The ChatGPT context gauge read about **98%** on the same short chat after 3.7.0.27. User and assistant tokens still matched the export (about 9,000). Tool tokens were about 1,015,000. That text lives on tool messages ChatGPT stores but does not keep in the model window: the same connector body copied into `parts`, `text`, and `result`; tether browsing page text and tether quotes; and JSON file-content or search-result payloads. The gauge counts each distinct tool field once, skips those caches, and caps any remaining tool body at 2,000 tokens per message. The tooltip says "Tool output capped." when the cap applies. When tool tokens are more than 5 times the user, assistant, and reasoning text, the label is **uncertain** and "Ask for a resume summary now." is left off.
+- On a chatgpt.com chat, the page console command `await __chatoutContextDebug()` prints a field report: role, recipient, content type, character count per field, whether that field was counted, and the 20 largest fields. The report does not include message text.
+- The 1,050,000 GPT-6 window is the context size OpenAI publishes for GPT-6 Astra, Sol, and Luna, with 922,000 maximum input tokens, on https://developers.openai.com/api/docs/models/gpt-6-astra and the matching Sol and Luna pages (checked 2026-11-11). chatgpt.com's `gpt-6-thinking` slug is not that API id. Using this window for it is an assumption.
+
 ## [3.7.0.27] - 2026-11-11
 
 ### Fixed
