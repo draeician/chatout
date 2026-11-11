@@ -42,6 +42,7 @@ test("visible-only red starts well before Chat B's 66k death", function () {
   assert.equal(lib.usage(32001, 0, ceiling, "dom").band, "red");
   const died = lib.usage(65757, 0, ceiling, "dom");
   assert.equal(died.band, "red");
+  assert.equal(died.label, "100%+");
   assert.match(died.caveat, /visible text only, may under-read/);
   assert.match(lib.tooltip(died), /Visible text only, may under-read/);
   assert.match(lib.tooltip(died), /Ask for a resume summary now/);
@@ -152,6 +153,19 @@ test("reads a conversation id from project and plain chat urls", function () {
   assert.equal(lib.isChatGptHost("claude.ai"), false);
 });
 
+test("the label stops at 100%+ and the tooltip names the limit and raw counts", function () {
+  const over = lib.usage(900000, 50000, lib.FALLBACK_LIMIT, "json", { source: "fallback", model: "gpt-5.2" });
+  assert.equal(over.label, "100%+");
+  assert.equal(over.band, "red");
+  const tip = lib.tooltip(over);
+  assert.match(tip, /Limit 200,000 \(fallback, gpt-5\.2\)/);
+  assert.match(tip, /Visible 900,000/);
+  assert.match(tip, /Hidden\/tool 50,000/);
+  assert.match(tip, /Total 950,000/);
+  const named = lib.usage(1000, 0, 32000, "json", { source: "instant", model: "gpt-4o" });
+  assert.match(lib.tooltip(named), /Limit 32,000 \(gpt-4o\)/);
+});
+
 test("counts the paginated messages list ChatGPT returns instead of a mapping", function () {
   const tool = "z".repeat(400);
   const counted = lib.countConversation({
@@ -165,4 +179,36 @@ test("counts the paginated messages list ChatGPT returns instead of a mapping", 
   assert.equal(counted.model, "gpt-5.2");
   assert.equal(counted.visibleTokens, lib.estimateTokens("Hello\nHi"));
   assert.ok(counted.hiddenTokens >= lib.estimateTokens(tool));
+});
+
+test("refreshing the same messages, including an overlapping page, does not change the count", function () {
+  const tool = "z".repeat(400);
+  const unnamed = "q".repeat(400);
+  const shared = { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: [tool] }, metadata: {} };
+  const noId = { author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: [unnamed] }, metadata: {} };
+  const newer = [
+    { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } },
+    shared,
+    noId
+  ];
+  const older = [
+    { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
+    shared,
+    noId
+  ];
+  const once = lib.countConversation({ messages: newer.concat(older), default_model_slug: "gpt-5.2" });
+  const repeated = newer.concat(newer, older, older, newer);
+  const counts = [0, 1, 2].map(function () {
+    return lib.countConversation({ messages: repeated, default_model_slug: "gpt-5.2" });
+  });
+  counts.forEach(function (counted) {
+    assert.equal(counted.visibleTokens, once.visibleTokens);
+    assert.equal(counted.hiddenTokens, once.hiddenTokens);
+    assert.equal(counted.model, "gpt-5.2");
+  });
+  assert.equal(once.visibleTokens, lib.estimateTokens("Hi\nHello"));
+  assert.ok(once.hiddenTokens < lib.estimateTokens(tool + unnamed) + 40);
+  assert.ok(once.hiddenTokens > lib.estimateTokens(tool));
+  const doubledList = lib.dedupeMessages([repeated, repeated]);
+  assert.equal(doubledList.length, lib.dedupeMessages([newer, older]).length);
 });

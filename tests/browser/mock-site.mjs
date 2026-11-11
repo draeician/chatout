@@ -15,6 +15,7 @@ export const GAUGE_DOM = "33333333-cccc-4ccc-8ccc-cccccccccccc";
 export const GAUGE_TURN = "44444444-dddd-4ddd-8ddd-dddddddddddd";
 export const GAUGE_MESSAGES = "55555555-eeee-4eee-8eee-eeeeeeeeeeee";
 export const GAUGE_PAGE = "66666666-ffff-4fff-8fff-ffffffffffff";
+export const GAUGE_STABLE = "77777777-abab-4aba-8aba-abababababab";
 const GPT_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const GPT_B = "bbbbbbbb-2222-4222-8222-222222222222";
 const GPT_C = "cccccccc-3333-4333-8333-333333333333";
@@ -170,7 +171,7 @@ function handleChatGpt(url, request) {
   if (pathName === "/c/" + GAUGE_SHORT || pathName === "/c/" + GAUGE_LONG) return page("chatgpt-chat.html");
   if (pathName === "/c/" + GAUGE_DOM) return page("chatgpt-gauge-dom.html");
   if (pathName === "/c/" + GAUGE_TURN) return page("chatgpt-gauge-turn.html");
-  if (pathName === "/c/" + GAUGE_MESSAGES || pathName === "/c/" + GAUGE_PAGE) return page("chatgpt-chat.html");
+  if (pathName === "/c/" + GAUGE_MESSAGES || pathName === "/c/" + GAUGE_PAGE || pathName === "/c/" + GAUGE_STABLE) return page("chatgpt-chat.html");
   if (pathName === "/backend-api/files/file-img1/download") return json({ download_url: "https://chatgpt.com/files-fixture/img1.png", file_name: "photo.png" });
   if (pathName === "/backend-api/files/file-doc1/download") return { status: 404, contentType: "text/plain", body: "gone" };
   if (pathName === "/files-fixture/img1.png") return { status: 200, contentType: "image/png", body: Buffer.from("89504e470d0a1a0a", "hex") };
@@ -225,6 +226,23 @@ function handleChatGpt(url, request) {
         { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
         { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["z".repeat(800)] }, metadata: {} },
         { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } }
+      ], { has_previous_page: false, start_cursor: null }));
+    }
+    if (convs[1] === GAUGE_STABLE) {
+      const shared = { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["z".repeat(400)] }, metadata: {} };
+      const noId = { author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["q".repeat(400)] }, metadata: {} };
+      const before = url.searchParams.get("before");
+      if (!before) {
+        return json(messagePage([
+          { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } },
+          shared,
+          noId
+        ], { has_previous_page: true, start_cursor: "older-stable" }));
+      }
+      return json(messagePage([
+        { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
+        shared,
+        noId
       ], { has_previous_page: false, start_cursor: null }));
     }
     if (convs[1] === GAUGE_MESSAGES) {

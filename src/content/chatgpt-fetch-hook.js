@@ -35,13 +35,28 @@
     return null;
   }
 
-  function publish(id, data) {
+  function publish(id, data, url) {
     var body = unwrap(data);
     if (!id || !body) return;
     cached[id] = body;
     try {
-      window.postMessage({ source: "chatout-conv", id: id, data: body }, location.origin);
+      window.postMessage({ source: "chatout-conv", id: id, url: String(url || ""), data: body }, location.origin);
     } catch (e) { /* page can reject a huge clone */ }
+  }
+
+  function msgKey(msg) {
+    var node = msg && msg.message && msg.message.author && !msg.author ? msg.message : msg;
+    if (!node || typeof node !== "object") return "";
+    var id = node.id || node.message_id;
+    if (id != null && typeof id !== "object" && String(id)) return "id:" + String(id);
+    var parts = node.content && node.content.parts;
+    var text = "";
+    if (Array.isArray(parts)) {
+      for (var i = 0; i < parts.length; i += 1) if (typeof parts[i] === "string") text += parts[i] + "\n";
+    }
+    if (!text && node.content && typeof node.content.text === "string") text = node.content.text;
+    if (!text) return "";
+    return "body:" + ((node.author && node.author.role) || "") + "\n" + text;
   }
 
   function noteResponse(url, responsePromise) {
@@ -50,7 +65,7 @@
     responsePromise.then(function (res) {
       try {
         if (!res || !res.ok || typeof res.clone !== "function") return;
-        res.clone().json().then(function (data) { publish(id, data); }).catch(function () {});
+        res.clone().json().then(function (data) { publish(id, data, url); }).catch(function () {});
       } catch (e) {}
     }).catch(function () {});
   }
@@ -78,7 +93,7 @@
       if (id) {
         xhr.addEventListener("load", function () {
           if (xhr.status >= 200 && xhr.status < 300) {
-            try { publish(id, JSON.parse(xhr.responseText)); } catch (e) {}
+            try { publish(id, JSON.parse(xhr.responseText), xhr.__chatoutUrl || ""); } catch (e) {}
           }
         });
       }
@@ -109,8 +124,8 @@
     for (var p = 0; p < lists.length; p += 1) {
       for (var i = 0; i < lists[p].length; i += 1) {
         var msg = lists[p][i];
-        var key = (msg && (msg.id || msg.message_id)) || ("n" + out.length);
-        if (seen[key]) continue;
+        var key = msgKey(msg);
+        if (!key || seen[key]) continue;
         seen[key] = true;
         out.push(msg);
       }
@@ -154,7 +169,7 @@
       if (!legacy) throw new Error("no conversation");
       root = legacy;
     }
-    publish(id, root);
+    publish(id, root, "");
     return root;
   }
 
@@ -163,7 +178,7 @@
     var msg = ev.data;
     if (!msg || msg.source !== "chatout-conv-ask" || !msg.id) return;
     if (cached[msg.id]) {
-      publish(msg.id, cached[msg.id]);
+      publish(msg.id, cached[msg.id], "");
       return;
     }
     load(msg.id).catch(function () {});

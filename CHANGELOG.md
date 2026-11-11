@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.26] - 2026-11-11
+
+### Fixed
+- The ChatGPT context gauge climbed on a conversation that was not growing (~466%, then ~947%). Every conversation response was appended to one saved message list, and the next refresh counted that whole list. The dedupe key fell back to the list index when a message had no stable id, so a second copy of the same snapshot was kept and the total doubled. Each refresh now counts one fresh snapshot. Messages are deduped by id, and a message with no id is deduped by its body, so overlapping pages and repeated polls count once. The label stops at **100%+** when the estimate is over the limit. The tooltip names which limit was used (the model, fallback, or your setting) and shows the raw visible, hidden, and total token counts.
+
 ## [3.7.0.25] - 2026-11-11
 
 ### Fixed

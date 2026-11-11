@@ -75,25 +75,36 @@
     return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
 
-  function usage(visibleTokens, hiddenTokens, limit, mode) {
+  function usage(visibleTokens, hiddenTokens, limit, mode, limitInfo) {
     var visible = Math.max(0, Math.round(Number(visibleTokens) || 0));
     var hidden = Math.max(0, Math.round(Number(hiddenTokens) || 0));
     var lim = Math.max(1, Math.round(Number(limit) || FALLBACK_LIMIT));
     var dom = mode === "dom";
     var counted = dom ? visible : visible + hidden;
     var percent = (counted / lim) * 100;
-    var shown = Math.round(Math.min(percent, 999));
+    var info = limitInfo || {};
     return {
       visibleTokens: visible,
       hiddenTokens: hidden,
       tokens: counted,
       limit: lim,
       percent: percent,
-      label: "~" + shown + "%",
+      label: percent > 100 ? "100%+" : "~" + Math.round(percent) + "%",
       caveat: dom ? VISIBLE_CAVEAT : "",
       band: bandFor(percent),
-      mode: dom ? "dom" : "json"
+      mode: dom ? "dom" : "json",
+      limitSource: dom ? "visible" : (info.source || ""),
+      limitModel: info.model || ""
     };
+  }
+
+  function limitNote(u) {
+    var name = "fallback";
+    if (u && u.mode === "dom") name = "visible text only";
+    else if (u && u.limitSource === "override") name = "your setting";
+    else if (u && u.limitSource && u.limitSource !== "fallback") name = u.limitModel || u.limitSource;
+    else if (u && u.limitModel) name = "fallback, " + u.limitModel;
+    return "Limit " + fmt(u && u.limit) + " (" + name + ").";
   }
 
   function tooltip(u) {
@@ -101,15 +112,18 @@
     if (!u || u.mode === "dom") {
       parts = [
         "Visible text only, may under-read.",
-        "About " + fmt(u && u.visibleTokens) + " visible tokens.",
+        limitNote(u),
+        "Visible " + fmt(u && u.visibleTokens) + " tokens.",
         "Hidden tool calls are not counted.",
-        "Cautious ceiling " + fmt(u && u.limit) + " tokens."
+        "Total " + fmt(u && u.tokens) + " tokens."
       ];
     } else {
       parts = [
-        "Estimate " + u.label + " of " + fmt(u.limit) + " tokens.",
+        "Estimate " + u.label + ".",
+        limitNote(u),
         "Visible " + fmt(u.visibleTokens) + " tokens.",
         "Hidden/tool " + fmt(u.hiddenTokens) + " tokens.",
+        "Total " + fmt(u.tokens) + " tokens.",
         "About 4 characters per token, not a tokenizer."
       ];
     }
@@ -210,13 +224,49 @@
     if (rest.length) hidden.push(rest.join("\n"));
   }
 
+  function messageNode(msg) {
+    if (msg && msg.message && typeof msg.message === "object" && (msg.message.author || msg.message.content) && !msg.author) return msg.message;
+    return msg;
+  }
+
+  function messageKey(msg) {
+    var node = messageNode(msg);
+    if (!node || typeof node !== "object") return "";
+    var id = node.id || node.message_id;
+    if (id != null && typeof id !== "object" && String(id)) return "id:" + String(id);
+    var role = (node.author && node.author.role) || "";
+    var bits = [];
+    pushStrings(node.content, bits, 0);
+    if (!bits.length) return "";
+    return "body:" + role + "\n" + bits.join("\n");
+  }
+
+  /* One snapshot. The same message id, or the same body when there is no id,
+     is kept once. Callers must pass the pages from this refresh only. */
+  function dedupeMessages(lists) {
+    var seen = {};
+    var out = [];
+    var groups = lists || [];
+    for (var p = 0; p < groups.length; p += 1) {
+      var list = groups[p] || [];
+      for (var i = 0; i < list.length; i += 1) {
+        var key = messageKey(list[i]);
+        if (!key || seen[key]) continue;
+        seen[key] = true;
+        out.push(messageNode(list[i]));
+      }
+    }
+    return out;
+  }
+
   /* Mapping nodes, or the paginated messages list ChatGPT now returns.
-     Orphans in a mapping are not in the live context, so that path can read high. */
+     Orphans in a mapping are not in the live context, so that path can read high.
+     A messages list is deduped before counting so a repeated snapshot cannot grow. */
   function countConversation(data) {
     var visible = [];
     var hidden = [];
     var model = "";
-    if (data && data.mapping) {
+    if (data && data.mapping && !(data.messages && data.messages.length)) {
       var keys = Object.keys(data.mapping);
       for (var i = 0; i < keys.length; i += 1) {
         var node = data.mapping[keys[i]];
@@ -224,9 +274,9 @@
       }
       model = modelFromConversation(data);
     } else {
-      var list = (data && data.messages) || [];
+      var list = dedupeMessages([data && data.messages]);
       for (var j = 0; j < list.length; j += 1) absorbMessage(list[j], visible, hidden);
-      model = modelFromMessages(data);
+      model = modelFromMessages({ messages: list, default_model_slug: data && data.default_model_slug, model: data && data.model });
     }
     return {
       visibleTokens: estimateTokens(visible.join("\n")),
@@ -258,6 +308,8 @@
     usage: usage,
     tooltip: tooltip,
     countConversation: countConversation,
+    dedupeMessages: dedupeMessages,
+    messageKey: messageKey,
     conversationIdFromPath: conversationIdFromPath,
     isChatGptHost: isChatGptHost
   };

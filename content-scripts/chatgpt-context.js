@@ -20,7 +20,7 @@
   var sessionHeadersCache = null;
   var pending = null;
   var lastFetchAt = 0;
-  var captured = {};
+  var slots = {};
   var cache = { id: "", at: 0, data: null, sig: "", source: "" };
 
   var TURN_SELECTOR = "[data-message-author-role='user'], [data-message-author-role='assistant'], [data-turn='user'], [data-turn='assistant'], [data-testid^='conversation-turn-']";
@@ -114,36 +114,52 @@
     return null;
   }
 
-  function remember(id, data) {
+  function slotKey(url, body) {
+    var text = String(url || "");
+    var match = text.match(/[?&]before=([^&#]+)/);
+    if (match) {
+      try { return "before:" + decodeURIComponent(match[1]); } catch (e) { return "before:" + match[1]; }
+    }
+    if (body && body.mapping && !(body.messages && body.messages.length)) return "mapping";
+    return "latest";
+  }
+
+  /* Replace the snapshot for this URL. Polls of the same page must not append. */
+  function remember(id, data, url) {
     var body = usable(data);
     if (!id || !body) return;
-    var prev = captured[id];
-    if (body.mapping || !prev || !prev.messages || !body.messages) {
-      captured[id] = body;
-      return;
+    if (!slots[id]) slots[id] = {};
+    slots[id][slotKey(url, body)] = body;
+  }
+
+  function assemble(id) {
+    var bucket = slots[id];
+    if (!bucket) return null;
+    var keys = Object.keys(bucket);
+    var lists = [];
+    var mapping = null;
+    var model = "";
+    var current = "";
+    for (var i = 0; i < keys.length; i += 1) {
+      var body = bucket[keys[i]];
+      if (body.default_model_slug) model = body.default_model_slug;
+      if (body.current_node) current = body.current_node;
+      if (body.messages && body.messages.length) lists.push(body.messages);
+      else if (body.mapping) mapping = body;
     }
-    var seen = {};
-    var out = [];
-    var lists = [prev.messages, body.messages];
-    for (var p = 0; p < lists.length; p += 1) {
-      for (var i = 0; i < lists[p].length; i += 1) {
-        var msg = lists[p][i];
-        var key = (msg && (msg.id || msg.message_id)) || ("n" + out.length);
-        if (seen[key]) continue;
-        seen[key] = true;
-        out.push(msg);
-      }
-    }
-    prev.messages = out;
-    if (body.default_model_slug) prev.default_model_slug = body.default_model_slug;
-    if (body.current_node) prev.current_node = body.current_node;
+    if (!lists.length) return mapping;
+    return {
+      messages: lib.dedupeMessages(lists),
+      default_model_slug: model,
+      current_node: current
+    };
   }
 
   window.addEventListener("message", function (ev) {
     if (ev.source !== window) return;
     var msg = ev.data;
     if (!msg || msg.source !== "chatout-conv" || !msg.id) return;
-    remember(msg.id, msg.data);
+    remember(msg.id, msg.data, msg.url);
     if (msg.id === lib.conversationIdFromPath(location.pathname)) schedule();
   });
 
@@ -157,7 +173,8 @@
     return new Promise(function (resolve) {
       var start = Date.now();
       (function tick() {
-        if (captured[id]) { resolve(captured[id]); return; }
+        var body = assemble(id);
+        if (body) { resolve(body); return; }
         if (Date.now() - start >= ms) { resolve(null); return; }
         setTimeout(tick, 50);
       })();
@@ -209,7 +226,7 @@
   }
 
   async function fetchMessagePages(id, headers) {
-    var merged = [];
+    var lists = [];
     var seen = {};
     var root = null;
     var cursor = "";
@@ -220,29 +237,34 @@
       try {
         data = usable(await fetchJson(url, headers));
       } catch (e) {
-        if (root && merged.length) break;
+        if (root && lists.length) break;
         throw e;
       }
       if (!data || !data.messages) {
-        if (root && merged.length) break;
+        if (root && lists.length) break;
         throw new Error("no messages");
       }
       if (!root) root = data;
+      var fresh = 0;
       for (var i = 0; i < data.messages.length; i += 1) {
-        var msg = data.messages[i];
-        var key = (msg && (msg.id || msg.message_id)) || ("n" + merged.length + ":" + i);
-        if (seen[key]) continue;
+        var key = lib.messageKey(data.messages[i]);
+        if (!key || seen[key]) continue;
         seen[key] = true;
-        merged.push(msg);
+        fresh += 1;
       }
+      if (!fresh) break;
+      lists.push(data.messages);
       var info = data.page_info || {};
       var next = info.has_previous_page && info.start_cursor ? String(info.start_cursor) : "";
       if (!next || next === cursor) break;
       cursor = next;
     }
     if (!root) throw new Error("no messages");
-    root.messages = merged;
-    return root;
+    var copy = {};
+    var fields = Object.keys(root);
+    for (var f = 0; f < fields.length; f += 1) copy[fields[f]] = root[fields[f]];
+    copy.messages = lib.dedupeMessages(lists);
+    return copy;
   }
 
   async function fetchConversation(id) {
@@ -266,11 +288,20 @@
   }
 
   function loadConversation(id) {
-    if (captured[id]) return Promise.resolve(store(id, captured[id], "page"));
     var sig = domSignature();
     var now = Date.now();
-    if (cache.id === id && cache.data && cache.sig === sig && now - cache.at < 8000) return Promise.resolve(cache.data);
-    if (cache.id === id && cache.data && now - cache.at < REFETCH_MS) {
+    if (cache.id === id && cache.data && cache.sig === sig && now - cache.at < 8000) {
+      if (cache.source === "page") {
+        var latest = assemble(id);
+        if (latest) {
+          cache.data = latest;
+          return Promise.resolve(latest);
+        }
+      } else {
+        return Promise.resolve(cache.data);
+      }
+    }
+    if (cache.id === id && cache.data && cache.source === "extension" && now - cache.at < REFETCH_MS) {
       setTimeout(schedule, REFETCH_MS - (now - cache.at) + 40);
       return Promise.resolve(cache.data);
     }
@@ -282,7 +313,7 @@
       askPage(id);
       return waitCaptured(id, 2500).then(function (data) {
         if (data) return store(id, data, "page");
-        return cache.id === id ? cache.data : null;
+        return cache.id === id && cache.source === "extension" ? cache.data : null;
       });
     }).finally(function () {
       if (pending && pending.promise === promise) pending = null;
@@ -329,6 +360,7 @@
     root.removeAttribute("data-chatout-context-limit");
     root.removeAttribute("data-chatout-context-band");
     root.removeAttribute("data-chatout-context-source");
+    root.removeAttribute("data-chatout-context-tokens");
   }
 
   function render(u, source) {
@@ -346,7 +378,8 @@
       "<span style='display:block;height:100%;width:" + width.toFixed(1) + "%;background:" + fill + "'></span>" +
       "</span></span></div>";
     var root = document.documentElement;
-    root.setAttribute("data-chatout-context", String(Math.round(Math.min(u.percent, 999))));
+    root.setAttribute("data-chatout-context", String(Math.round(Math.min(u.percent, 100))));
+    root.setAttribute("data-chatout-context-tokens", String(u.tokens));
     root.setAttribute("data-chatout-context-mode", u.mode);
     root.setAttribute("data-chatout-context-visible", String(u.visibleTokens));
     root.setAttribute("data-chatout-context-hidden", String(u.hiddenTokens));
@@ -398,7 +431,7 @@
     }
     var resolved = lib.resolveLimit(counted.model, override);
     var limit = mode === "dom" ? lib.visibleOnlyLimit(resolved.limit) : resolved.limit;
-    render(lib.usage(counted.visibleTokens, counted.hiddenTokens, limit, mode), source);
+    render(lib.usage(counted.visibleTokens, counted.hiddenTokens, limit, mode, resolved), source);
   }
 
   function schedule() {
