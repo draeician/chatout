@@ -12,6 +12,9 @@ const CHATGPT_CHAT = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 export const GAUGE_SHORT = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 export const GAUGE_LONG = "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 export const GAUGE_DOM = "33333333-cccc-4ccc-8ccc-cccccccccccc";
+export const GAUGE_TURN = "44444444-dddd-4ddd-8ddd-dddddddddddd";
+export const GAUGE_MESSAGES = "55555555-eeee-4eee-8eee-eeeeeeeeeeee";
+export const GAUGE_PAGE = "66666666-ffff-4fff-8fff-ffffffffffff";
 const GPT_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const GPT_B = "bbbbbbbb-2222-4222-8222-222222222222";
 const GPT_C = "cccccccc-3333-4333-8333-333333333333";
@@ -145,7 +148,17 @@ function page(name) {
   return { status: 200, contentType: "text/html; charset=utf-8", body: html(name) };
 }
 
-function handleChatGpt(url) {
+function messagePage(messages, pageInfo, model) {
+  return {
+    title: "Gauge",
+    default_model_slug: model || "gpt-5.2",
+    current_node: "n2",
+    messages: messages,
+    page_info: pageInfo
+  };
+}
+
+function handleChatGpt(url, request) {
   const pathName = url.pathname;
   if (pathName === "/api/auth/session") {
     return json({ accessToken: "fixture-token", account: { id: "acc-fixture" } });
@@ -156,6 +169,8 @@ function handleChatGpt(url) {
   if (pathName === "/g/g-p-fixture/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
   if (pathName === "/c/" + GAUGE_SHORT || pathName === "/c/" + GAUGE_LONG) return page("chatgpt-chat.html");
   if (pathName === "/c/" + GAUGE_DOM) return page("chatgpt-gauge-dom.html");
+  if (pathName === "/c/" + GAUGE_TURN) return page("chatgpt-gauge-turn.html");
+  if (pathName === "/c/" + GAUGE_MESSAGES || pathName === "/c/" + GAUGE_PAGE) return page("chatgpt-chat.html");
   if (pathName === "/backend-api/files/file-img1/download") return json({ download_url: "https://chatgpt.com/files-fixture/img1.png", file_name: "photo.png" });
   if (pathName === "/backend-api/files/file-doc1/download") return { status: 404, contentType: "text/plain", body: "gone" };
   if (pathName === "/files-fixture/img1.png") return { status: 200, contentType: "image/png", body: Buffer.from("89504e470d0a1a0a", "hex") };
@@ -201,9 +216,35 @@ function handleChatGpt(url) {
   if (pathName === "/backend-api/gizmos/g-p-domonly/conversations") {
     return { status: 404, contentType: "application/json", body: "{\"error\":\"missing\"}" };
   }
+  const fromPage = request && (request.headers()["x-chatout-page"] || "") === "1";
+  const convs = pathName.match(/^\/backend-api\/conversations\/([^/]+)$/);
+  if (convs) {
+    if (convs[1] === GAUGE_PAGE) {
+      if (!fromPage) return { status: 403, contentType: "application/json", body: "{}" };
+      return json(messagePage([
+        { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
+        { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["z".repeat(800)] }, metadata: {} },
+        { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } }
+      ], { has_previous_page: false, start_cursor: null }));
+    }
+    if (convs[1] === GAUGE_MESSAGES) {
+      const before = url.searchParams.get("before");
+      if (!before) {
+        return json(messagePage([
+          { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
+          { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } }
+        ], { has_previous_page: true, start_cursor: "older-1" }));
+      }
+      return json(messagePage([
+        { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["z".repeat(800)] }, metadata: {} }
+      ], { has_previous_page: false, start_cursor: null }));
+    }
+    return { status: 404, contentType: "text/plain", body: "unknown conversation" };
+  }
   const conv = pathName.match(/^\/backend-api\/conversation\/([^/]+)$/);
   if (conv) {
     if (conv[1] === GPT_D) return { status: 500, contentType: "text/plain", body: "nope" };
+    if (conv[1] === GAUGE_PAGE) return { status: 403, contentType: "application/json", body: "{}" };
     const body = chatgptBodies[conv[1]];
     if (!body) return { status: 404, contentType: "text/plain", body: "unknown conversation" };
     return json(body);
@@ -345,7 +386,7 @@ export async function installFixtures(context) {
     const request = route.request();
     const url = new URL(request.url());
     let hit = null;
-    if (url.hostname === "chatgpt.com") hit = handleChatGpt(url);
+    if (url.hostname === "chatgpt.com") hit = handleChatGpt(url, request);
     else if (url.hostname === "claude.ai") hit = handleClaude(url);
     else if (url.hostname === "gemini.google.com") hit = handleGemini(url, request);
     else if (url.hostname === "grok.com") hit = handleGrok(url, request);

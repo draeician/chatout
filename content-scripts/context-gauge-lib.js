@@ -157,6 +157,10 @@
     return recipient === "all" || recipient === "user" || recipient === "";
   }
 
+  function slugOf(msg) {
+    return msg && msg.metadata && (msg.metadata.model_slug || msg.metadata.resolved_model_slug);
+  }
+
   function modelFromConversation(data) {
     var mapping = (data && data.mapping) || {};
     var fromPath = "";
@@ -166,52 +170,73 @@
       seen[nodeId] = true;
       var msg = mapping[nodeId].message;
       var role = msg && msg.author && msg.author.role;
-      var slug = msg && msg.metadata && (msg.metadata.model_slug || msg.metadata.resolved_model_slug);
+      var slug = slugOf(msg);
       if (!fromPath && role === "assistant" && slug) fromPath = String(slug);
       nodeId = mapping[nodeId].parent;
     }
     if (fromPath) return fromPath;
+    return modelFromMessages(data);
+  }
+
+  function modelFromMessages(data) {
+    var list = (data && data.messages) || [];
+    for (var i = list.length - 1; i >= 0; i -= 1) {
+      var msg = list[i];
+      var role = msg && msg.author && msg.author.role;
+      var slug = slugOf(msg);
+      if (role === "assistant" && slug) return String(slug);
+    }
     if (data && data.default_model_slug) return String(data.default_model_slug);
     if (data && data.model) return String(data.model);
     return "";
   }
 
-  /* Every mapping node, including tool, system, and orphaned branches.
-     Orphans are not in the live context, so this can read high. */
+  function absorbMessage(msg, visible, hidden) {
+    if (!msg) return;
+    var shown = isShownRole(msg);
+    var vis = shown ? visibleParts(msg.content) : [];
+    if (shown && typeof msg.content === "string") vis.push(msg.content);
+    var all = [];
+    pushStrings(msg.content, all, 0);
+    pushStrings(msg.metadata, all, 0);
+    if (msg.author && msg.author.name && !shown) all.push(String(msg.author.name));
+    if (msg.recipient && msg.recipient !== "all" && msg.recipient !== "user") all.push(String(msg.recipient));
+    var rest = all.slice();
+    for (var v = 0; v < vis.length; v += 1) {
+      var at = rest.indexOf(vis[v]);
+      if (at >= 0) rest.splice(at, 1);
+    }
+    if (vis.length) visible.push(vis.join("\n"));
+    if (rest.length) hidden.push(rest.join("\n"));
+  }
+
+  /* Mapping nodes, or the paginated messages list ChatGPT now returns.
+     Orphans in a mapping are not in the live context, so that path can read high. */
   function countConversation(data) {
-    var mapping = (data && data.mapping) || {};
-    var keys = Object.keys(mapping);
     var visible = [];
     var hidden = [];
-    for (var i = 0; i < keys.length; i += 1) {
-      var node = mapping[keys[i]];
-      var msg = node && node.message;
-      if (!msg) continue;
-      var shown = isShownRole(msg);
-      var vis = shown ? visibleParts(msg.content) : [];
-      if (shown && typeof msg.content === "string") vis.push(msg.content);
-      var all = [];
-      pushStrings(msg.content, all, 0);
-      pushStrings(msg.metadata, all, 0);
-      if (msg.author && msg.author.name && !shown) all.push(String(msg.author.name));
-      if (msg.recipient && msg.recipient !== "all" && msg.recipient !== "user") all.push(String(msg.recipient));
-      var rest = all.slice();
-      for (var v = 0; v < vis.length; v += 1) {
-        var at = rest.indexOf(vis[v]);
-        if (at >= 0) rest.splice(at, 1);
+    var model = "";
+    if (data && data.mapping) {
+      var keys = Object.keys(data.mapping);
+      for (var i = 0; i < keys.length; i += 1) {
+        var node = data.mapping[keys[i]];
+        absorbMessage(node && node.message, visible, hidden);
       }
-      if (vis.length) visible.push(vis.join("\n"));
-      if (rest.length) hidden.push(rest.join("\n"));
+      model = modelFromConversation(data);
+    } else {
+      var list = (data && data.messages) || [];
+      for (var j = 0; j < list.length; j += 1) absorbMessage(list[j], visible, hidden);
+      model = modelFromMessages(data);
     }
     return {
       visibleTokens: estimateTokens(visible.join("\n")),
       hiddenTokens: estimateTokens(hidden.join("\n")),
-      model: modelFromConversation(data)
+      model: model
     };
   }
 
   function conversationIdFromPath(pathname) {
-    var m = String(pathname || "").match(/\/c\/([0-9a-fA-F-]{8,})(?=\/|$)/);
+    var m = String(pathname || "").match(/\/c\/([A-Za-z0-9_-]{8,})(?=\/|$)/);
     return m ? m[1] : "";
   }
 

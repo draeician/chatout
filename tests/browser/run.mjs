@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM } from "./mock-site.mjs";
+import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM, GAUGE_TURN, GAUGE_MESSAGES, GAUGE_PAGE } from "./mock-site.mjs";
 import { closeExtension, launchExtension, serviceWorker, waitForDownload } from "./launch.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -479,7 +479,9 @@ check("chatgpt context gauge drops the idle label and tracks the conversation", 
     return document.documentElement.getAttribute("data-chatout-context-mode") === "dom";
   }, null, { timeout: 8000 });
   const caveat = await dom.getByRole("meter").innerText();
-  if (!/visible text only, may under-read/i.test(caveat)) throw new Error(caveat);
+  if (/visible text only/i.test(caveat)) throw new Error("caption is visible: " + caveat);
+  const caveatTip = await dom.getByRole("meter").getAttribute("title");
+  if (!/visible text only, may under-read/i.test(caveatTip)) throw new Error(caveatTip);
   if ((await dom.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-limit"); })) !== "40000") {
     throw new Error("dom ceiling " + await dom.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-limit"); }));
   }
@@ -500,11 +502,46 @@ check("chatgpt context gauge drops the idle label and tracks the conversation", 
   await both.getByRole("button", { name: "Archive project" }).waitFor();
   await both.getByRole("meter").waitFor({ timeout: 8000 });
   if (await both.getByText("Save every chat in this project").count()) throw new Error("idle label beside the button");
+  const placed = await both.getByRole("meter").innerText();
+  if (/visible text only/i.test(placed)) throw new Error("caption is visible: " + placed);
   const buttonBox = await both.getByRole("button", { name: "Archive project" }).boundingBox();
   const gaugeBox = await both.getByRole("meter").boundingBox();
   if (!buttonBox || !gaugeBox) throw new Error("missing box");
-  if (gaugeBox.x + gaugeBox.width > buttonBox.x + 2) throw new Error("gauge overlaps the button " + JSON.stringify({ gaugeBox: gaugeBox, buttonBox: buttonBox }));
+  if (gaugeBox.y < buttonBox.y + buttonBox.height - 2) {
+    throw new Error("gauge is not under the button " + JSON.stringify({ gaugeBox: gaugeBox, buttonBox: buttonBox }));
+  }
+  const rightDelta = Math.abs((gaugeBox.x + gaugeBox.width) - (buttonBox.x + buttonBox.width));
+  if (rightDelta > 8) throw new Error("gauge is not right-aligned " + rightDelta + " " + JSON.stringify({ gaugeBox: gaugeBox, buttonBox: buttonBox }));
   await both.close();
+
+  const turns = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_TURN);
+  await turns.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "dom"
+      && Number(document.documentElement.getAttribute("data-chatout-context")) > 0;
+  }, null, { timeout: 8000 });
+  await turns.close();
+
+  const messages = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_MESSAGES);
+  await messages.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "json";
+  }, null, { timeout: 8000 });
+  const msgHidden = Number(await messages.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-hidden"); }));
+  const msgVisible = Number(await messages.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-visible"); }));
+  if (!(msgHidden > msgVisible)) throw new Error("messages hidden " + msgHidden + " visible " + msgVisible);
+  if ((await messages.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-source"); })) !== "extension") {
+    throw new Error("messages source " + await messages.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-source"); }));
+  }
+  await messages.close();
+
+  const viaPage = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_PAGE);
+  await viaPage.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "json"
+      && document.documentElement.getAttribute("data-chatout-context-source") === "page";
+  }, null, { timeout: 12000 });
+  const pageHidden = Number(await viaPage.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-hidden"); }));
+  const pageVisible = Number(await viaPage.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-visible"); }));
+  if (!(pageHidden > pageVisible)) throw new Error("page hidden " + pageHidden + " visible " + pageVisible);
+  await viaPage.close();
 
   const claude = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   await claude.waitForTimeout(400);

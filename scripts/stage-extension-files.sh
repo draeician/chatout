@@ -20,6 +20,7 @@ cp "$ROOT/content-scripts/config.js" \
    "$ROOT/content-scripts/project-archive.js" \
    "$ROOT/content-scripts/context-gauge-lib.js" \
    "$ROOT/content-scripts/chatgpt-context.js" \
+   "$ROOT/content-scripts/chatgpt-fetch-hook.js" \
    "$STAGE/content-scripts/"
 # Referenced by manifest content_scripts (debug harnesses; gated in-page)
 if [[ -f "$ROOT/content-scripts/grok-title-debug.js" ]]; then

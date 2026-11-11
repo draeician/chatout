@@ -9,6 +9,18 @@
    "content_scripts": [
       {
          "js": [
+            "content-scripts/chatgpt-fetch-hook.js"
+         ],
+         "matches": [
+            "https://chatgpt.com/*",
+            "https://chat.openai.com/*"
+         ],
+         "run_at": "document_start",
+         "world": "MAIN",
+         "all_frames": false
+      },
+      {
+         "js": [
             "content-scripts/config.js",
             "content-scripts/content.js",
             "content-scripts/project-archive-lib.js",
@@ -103,7 +115,7 @@
       "downloads"
    ],
    "update_url": "https://clients2.google.com/service/update2/crx",
-   "version": "3.7.0.24",
+   "version": "3.7.0.25",
    "web_accessible_resources": [
       {
          "matches": [

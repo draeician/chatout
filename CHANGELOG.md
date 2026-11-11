@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.25] - 2026-11-11
+
+### Fixed
+- The ChatGPT context gauge sat to the left of **Archive project**, and the line “visible text only, may under-read” ran across the header. The gauge is now a compact pill under that button, lined up with the button’s right edge. That caveat is only in the tooltip.
+- On a logged-in conversation the gauge fell back to visible text and showed ~0%. ChatGPT loads a chat with `GET /backend-api/conversations/{id}` (a paginated `messages` list). The gauge requested the older `/backend-api/conversation/{id}` and discarded any body that had no `mapping`, so the read failed. The on-screen fallback only looked at `main [data-message-author-role]`, which current turns do not use, so the count stayed at zero and a failed read was not retried. The gauge now counts that messages list (and still accepts a mapping), follows older pages, and if the extension’s own request is rejected it uses the conversation response the page already loaded. The visible-text fallback also reads `[data-turn]` and conversation turns, and it stays hidden instead of showing ~0% when it finds no message text.
+
 ## [3.7.0.24] - 2026-11-11
 
 ### Added

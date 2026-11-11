@@ -143,7 +143,26 @@ test("counts every mapping node, split into visible and hidden", function () {
 test("reads a conversation id from project and plain chat urls", function () {
   assert.equal(lib.conversationIdFromPath("/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"), "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   assert.equal(lib.conversationIdFromPath("/g/g-p-fixture/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"), "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  assert.equal(
+    lib.conversationIdFromPath("/g/g-p-6a00000012348191a1b2c3d4e5f60718-my-project/c/01HXYZABCdef-more_id"),
+    "01HXYZABCdef-more_id"
+  );
   assert.equal(lib.conversationIdFromPath("/g/g-p-fixture/project"), "");
   assert.equal(lib.isChatGptHost("chatgpt.com"), true);
   assert.equal(lib.isChatGptHost("claude.ai"), false);
+});
+
+test("counts the paginated messages list ChatGPT returns instead of a mapping", function () {
+  const tool = "z".repeat(400);
+  const counted = lib.countConversation({
+    default_model_slug: "gpt-5.2",
+    messages: [
+      { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
+      { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: [tool] }, metadata: {} },
+      { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } }
+    ]
+  });
+  assert.equal(counted.model, "gpt-5.2");
+  assert.equal(counted.visibleTokens, lib.estimateTokens("Hello\nHi"));
+  assert.ok(counted.hiddenTokens >= lib.estimateTokens(tool));
 });
