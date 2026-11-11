@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM, GAUGE_TURN, GAUGE_MESSAGES, GAUGE_PAGE, GAUGE_STABLE } from "./mock-site.mjs";
+import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM, GAUGE_TURN, GAUGE_MESSAGES, GAUGE_PAGE, GAUGE_STABLE, GAUGE_META } from "./mock-site.mjs";
 import { closeExtension, launchExtension, serviceWorker, waitForDownload } from "./launch.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -462,7 +462,7 @@ check("chatgpt context gauge drops the idle label and tracks the conversation", 
   if (!(hidden > visible)) throw new Error("hidden " + hidden + " visible " + visible);
   if (limit !== "200000") throw new Error("limit " + limit);
   const tip = await page.getByRole("meter").getAttribute("title");
-  if (!/Hidden\/tool/.test(tip) || !/Visible /.test(tip) || !/Limit 200,000 \(fallback/.test(tip) || !/Total /.test(tip)) throw new Error(tip);
+  if (!/User /.test(tip) || !/Tool /.test(tip) || !/Limit 200,000 \(fallback/.test(tip) || !/Total /.test(tip)) throw new Error(tip);
   if (await page.getByText("Save every chat in this project").count()) throw new Error("idle label on a chat");
   await page.close();
 
@@ -577,6 +577,23 @@ check("chatgpt context gauge drops the idle label and tracks the conversation", 
   const stableLabel = await stable.getByRole("meter").innerText();
   if (/~\d{3,}/.test(stableLabel)) throw new Error("percent rendered over 100: " + stableLabel);
   await stable.close();
+
+  const meta = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_META);
+  await meta.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "json"
+      && document.documentElement.getAttribute("data-chatout-context-limit") === "1050000";
+  }, null, { timeout: 8000 });
+  const metaPercent = Number(await meta.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context"); }));
+  if (!(metaPercent < 10)) throw new Error("fat metadata percent " + metaPercent);
+  const metaTip = await meta.getByRole("meter").getAttribute("title");
+  if (!/User /.test(metaTip) || !/Assistant /.test(metaTip) || !/Tool /.test(metaTip) || !/Reasoning /.test(metaTip) || !/Other /.test(metaTip)) {
+    throw new Error(metaTip);
+  }
+  if (!/Limit 1,050,000 \(gpt-6-thinking\)/.test(metaTip)) throw new Error(metaTip);
+  if (/Ask for a resume summary now/.test(metaTip)) throw new Error("resume hint on a short chat " + metaTip);
+  const metaLabel = await meta.getByRole("meter").innerText();
+  if (/100%\+/.test(metaLabel)) throw new Error("short chat rendered full: " + metaLabel);
+  await meta.close();
 
   const claude = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   await claude.waitForTimeout(400);

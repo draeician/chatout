@@ -34,6 +34,21 @@ test("unknown and flagship models use the 200k calibration fallback", function (
   assert.equal(lib.resolveLimit("gpt-4o", 12).limit, 32000);
 });
 
+test("gpt-6-thinking uses the published 1,050,000 window instead of the fallback", function () {
+  const resolved = lib.resolveLimit("gpt-6-thinking", null);
+  assert.equal(resolved.limit, lib.GPT6_LIMIT);
+  assert.equal(resolved.limit, 1050000);
+  assert.equal(resolved.source, "gpt-6");
+  assert.equal(resolved.model, "gpt-6-thinking");
+  assert.equal(lib.resolveLimit("gpt-6", null).limit, 1050000);
+  assert.equal(lib.resolveLimit("gpt-6-astra", null).source, "gpt-6");
+  const named = lib.usage(8949, 0, resolved.limit, "json", resolved, {
+    user: 2000, assistant: 6949, tool: 0, reasoning: 0, other: 0
+  });
+  assert.match(lib.tooltip(named), /Limit 1,050,000 \(gpt-6-thinking\)/);
+  assert.doesNotMatch(lib.tooltip(named), /fallback/);
+});
+
 test("visible-only red starts well before Chat B's 66k death", function () {
   const ceiling = lib.visibleOnlyLimit(lib.FALLBACK_LIMIT);
   assert.equal(ceiling, 40000);
@@ -62,10 +77,27 @@ test("a text-heavy chat turns red on the default window with room left", functio
 test("hidden tool tokens fill the window when visible text does not", function () {
   const visibleOnly = lib.usage(65757, 0, lib.FALLBACK_LIMIT, "json");
   assert.equal(visibleOnly.band, "green");
-  const withTools = lib.usage(65757, 120000, lib.FALLBACK_LIMIT, "json");
+  const withTools = lib.usage(65757, 120000, lib.FALLBACK_LIMIT, "json", null, {
+    user: 1000, assistant: 64757, tool: 120000, reasoning: 0, other: 0
+  });
   assert.equal(withTools.band, "red");
-  assert.match(lib.tooltip(withTools), /Hidden\/tool 120,000/);
-  assert.match(lib.tooltip(withTools), /Visible 65,757/);
+  assert.match(lib.tooltip(withTools), /Tool 120,000/);
+  assert.match(lib.tooltip(withTools), /User 1,000/);
+  assert.match(lib.tooltip(withTools), /Ask for a resume summary now/);
+  const lumped = lib.usage(65757, 120000, lib.FALLBACK_LIMIT, "json");
+  assert.match(lib.tooltip(lumped), /Hidden\/tool 120,000/);
+  assert.match(lib.tooltip(lumped), /Visible 65,757/);
+});
+
+test("a bogus hidden total does not ask for a resume summary", function () {
+  const bogus = lib.usage(8949, 1110182, 200000, "json", { source: "fallback", model: "gpt-6-thinking" }, {
+    user: 2000, assistant: 6949, tool: 0, reasoning: 0, other: 1110182
+  });
+  assert.equal(bogus.label, "100%+");
+  assert.equal(bogus.band, "red");
+  const tip = lib.tooltip(bogus);
+  assert.match(tip, /Other 1,110,182/);
+  assert.doesNotMatch(tip, /Ask for a resume summary now/);
 });
 
 test("counts every mapping node, split into visible and hidden", function () {
@@ -80,7 +112,7 @@ test("counts every mapping node, split into visible and hidden", function () {
         message: {
           author: { role: "user" },
           content: { content_type: "multimodal_text", parts: [{ asset_pointer: "file-service://file-1" }, "Hello"] },
-          metadata: { attachments: [{ name: "notes.pdf", extracted_text: "SECRET FILE BODY" }] },
+          metadata: { attachments: [{ name: "notes.pdf", extracted_text: "S".repeat(2000) }] },
           recipient: "all"
         }
       },
@@ -126,10 +158,11 @@ test("counts every mapping node, split into visible and hidden", function () {
     }
   });
   assert.equal(counted.model, "gpt-4o");
-  assert.ok(counted.visibleTokens >= lib.estimateTokens("Hello\nHi there\nabandoned branch answer"));
-  assert.ok(counted.hiddenTokens >= lib.estimateTokens("x".repeat(400)));
-  assert.ok(counted.hiddenTokens >= lib.estimateTokens("SECRET FILE BODY"));
-  assert.ok(counted.hiddenTokens >= lib.estimateTokens("system prompt text"));
+  assert.equal(counted.categories.user, lib.estimateTokens("Hello"));
+  assert.ok(counted.visibleTokens >= lib.estimateTokens("Hello") + lib.estimateTokens("Hi there"));
+  assert.equal(counted.categories.tool, lib.estimateTokens("x".repeat(400)));
+  assert.ok(counted.hiddenTokens < lib.estimateTokens("S".repeat(2000)));
+  assert.equal(counted.categories.other, lib.estimateTokens("system prompt text"));
   const live = lib.countConversation({
     current_node: "n2",
     mapping: {
@@ -177,8 +210,10 @@ test("counts the paginated messages list ChatGPT returns instead of a mapping", 
     ]
   });
   assert.equal(counted.model, "gpt-5.2");
-  assert.equal(counted.visibleTokens, lib.estimateTokens("Hello\nHi"));
-  assert.ok(counted.hiddenTokens >= lib.estimateTokens(tool));
+  assert.equal(counted.categories.user, lib.estimateTokens("Hello"));
+  assert.equal(counted.categories.assistant, lib.estimateTokens("Hi"));
+  assert.equal(counted.visibleTokens, counted.categories.user + counted.categories.assistant);
+  assert.equal(counted.categories.tool, lib.estimateTokens(tool));
 });
 
 test("refreshing the same messages, including an overlapping page, does not change the count", function () {
@@ -206,9 +241,82 @@ test("refreshing the same messages, including an overlapping page, does not chan
     assert.equal(counted.hiddenTokens, once.hiddenTokens);
     assert.equal(counted.model, "gpt-5.2");
   });
-  assert.equal(once.visibleTokens, lib.estimateTokens("Hi\nHello"));
+  assert.equal(once.categories.user, lib.estimateTokens("Hello"));
+  assert.equal(once.categories.assistant, lib.estimateTokens("Hi"));
+  assert.equal(once.visibleTokens, once.categories.user + once.categories.assistant);
   assert.ok(once.hiddenTokens < lib.estimateTokens(tool + unnamed) + 40);
   assert.ok(once.hiddenTokens > lib.estimateTokens(tool));
   const doubledList = lib.dedupeMessages([repeated, repeated]);
   assert.equal(doubledList.length, lib.dedupeMessages([newer, older]).length);
+});
+
+test("a short chat with connector metadata stays under 10%", function () {
+  const blob = "m".repeat(900000);
+  const cipher = "Ab3+/xyzQ9".repeat(400);
+  const data = {
+    default_model_slug: "gpt-6-thinking",
+    messages: [
+      { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Summarize the repo"] }, recipient: "all", metadata: { request_id: "req-1" } },
+      { id: "call", author: { role: "assistant" }, content: { content_type: "code", language: "unknown", text: "search(\"repo\")" }, recipient: "web.run", metadata: { model_slug: "gpt-6-thinking" } },
+      {
+        id: "tool",
+        author: { role: "tool", name: "web.run" },
+        content: { content_type: "text", parts: ["file excerpt " + "x".repeat(80)] },
+        recipient: "all",
+        metadata: {
+          search_result_groups: [{ entries: [{ snippet: blob, content: blob, url: "https://example.test/readme" }] }],
+          content_references: [{ matched_text: blob.slice(0, 400), type: "grouped_webpages" }],
+          encrypted_reasoning: cipher,
+          attachments: [{ id: "file-1", name: "shot.png", extracted_text: blob.slice(0, 500) }]
+        }
+      },
+      {
+        id: "think",
+        author: { role: "assistant" },
+        content: { content_type: "thoughts", thoughts: [{ summary: "Look at the excerpt", content: "The excerpt is short." }] },
+        metadata: { encrypted_reasoning: cipher },
+        recipient: "all"
+      },
+      {
+        id: "a",
+        author: { role: "assistant" },
+        content: {
+          content_type: "multimodal_text",
+          parts: [
+            { content_type: "image_asset_pointer", asset_pointer: "file-service://file-1" },
+            "The repo is small.",
+            cipher
+          ]
+        },
+        metadata: { model_slug: "gpt-6-thinking", content_references: [{ matched_text: "The repo is small.", items: [{ snippet: blob }] }] },
+        recipient: "all"
+      }
+    ]
+  };
+  assert.ok(lib.estimateTokens(blob) > 200000);
+  const counted = lib.countConversation(data);
+  const again = lib.countConversation({ messages: data.messages.concat(data.messages), default_model_slug: data.default_model_slug });
+  assert.equal(again.visibleTokens, counted.visibleTokens);
+  assert.equal(again.hiddenTokens, counted.hiddenTokens);
+  assert.equal(counted.model, "gpt-6-thinking");
+  assert.equal(counted.categories.user, lib.estimateTokens("Summarize the repo"));
+  assert.equal(counted.categories.assistant, lib.estimateTokens("The repo is small."));
+  assert.equal(counted.categories.reasoning, lib.estimateTokens("Look at the excerpt\nThe excerpt is short."));
+  assert.equal(counted.categories.other, 0);
+  assert.ok(counted.categories.tool > lib.estimateTokens("search(\"repo\")"));
+  assert.ok(counted.categories.tool < 80);
+  const limit = lib.resolveLimit(counted.model, null);
+  const reading = lib.usage(counted.visibleTokens, counted.hiddenTokens, limit.limit, "json", limit, counted.categories);
+  assert.ok(reading.percent < 10, "percent " + reading.percent + " tokens " + reading.tokens);
+  assert.ok(reading.tokens < 500);
+  assert.equal(reading.label.startsWith("~"), true);
+  const tip = lib.tooltip(reading);
+  assert.match(tip, /User /);
+  assert.match(tip, /Assistant /);
+  assert.match(tip, /Tool /);
+  assert.match(tip, /Reasoning /);
+  assert.match(tip, /Other 0/);
+  assert.match(tip, /Limit 1,050,000 \(gpt-6-thinking\)/);
+  assert.doesNotMatch(tip, /Ask for a resume summary now/);
+  assert.doesNotMatch(tip, /100%\+/);
 });
