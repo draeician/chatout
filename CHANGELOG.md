@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.24] - 2026-11-11
+
+### Added
+- ChatGPT context gauge beside the upper-right button on an open conversation. It shows an estimate such as `~62%` plus a small bar (green under 60%, amber 60–80%, red above 80%). Red adds “Ask for a resume summary now.” The count comes from the conversation JSON and includes tool, system, and hidden messages plus attachment metadata, not only the visible turns. The tooltip lists visible tokens and hidden/tool tokens separately. If that JSON cannot be read, the gauge uses on-screen text, says “visible text only, may under-read,” and turns red well before 66,000 visible tokens. The default window is 200,000 tokens. Settings has a “ChatGPT context limit” field that replaces it. Counting is about 4 characters per token, not a tokenizer.
+
+### Changed
+- The idle line “Save every chat in this project.” under **Archive project** is no longer shown. Progress and the final summary still appear while an archive is running.
+
 ## [3.7.0.23] - 2026-10-31
 
 ### Changed
