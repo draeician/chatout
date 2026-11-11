@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM, GAUGE_TURN, GAUGE_MESSAGES, GAUGE_PAGE } from "./mock-site.mjs";
+import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM, GAUGE_TURN, GAUGE_MESSAGES, GAUGE_PAGE, GAUGE_STABLE } from "./mock-site.mjs";
 import { closeExtension, launchExtension, serviceWorker, waitForDownload } from "./launch.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -462,7 +462,7 @@ check("chatgpt context gauge drops the idle label and tracks the conversation", 
   if (!(hidden > visible)) throw new Error("hidden " + hidden + " visible " + visible);
   if (limit !== "200000") throw new Error("limit " + limit);
   const tip = await page.getByRole("meter").getAttribute("title");
-  if (!/Hidden\/tool/.test(tip) || !/Visible /.test(tip)) throw new Error(tip);
+  if (!/Hidden\/tool/.test(tip) || !/Visible /.test(tip) || !/Limit 200,000 \(fallback/.test(tip) || !/Total /.test(tip)) throw new Error(tip);
   if (await page.getByText("Save every chat in this project").count()) throw new Error("idle label on a chat");
   await page.close();
 
@@ -542,6 +542,41 @@ check("chatgpt context gauge drops the idle label and tracks the conversation", 
   const pageVisible = Number(await viaPage.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-visible"); }));
   if (!(pageHidden > pageVisible)) throw new Error("page hidden " + pageHidden + " visible " + pageVisible);
   await viaPage.close();
+
+  const stable = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_STABLE);
+  await stable.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "json"
+      && Number(document.documentElement.getAttribute("data-chatout-context-hidden")) > 0;
+  }, null, { timeout: 8000 });
+  const readCount = function () {
+    return stable.evaluate(function () {
+      return {
+        hidden: document.documentElement.getAttribute("data-chatout-context-hidden"),
+        visible: document.documentElement.getAttribute("data-chatout-context-visible"),
+        tokens: document.documentElement.getAttribute("data-chatout-context-tokens")
+      };
+    });
+  };
+  const firstCount = await readCount();
+  if (!(Number(firstCount.hidden) > 150 && Number(firstCount.hidden) < 280)) {
+    throw new Error("overlapping pages were counted more than once " + JSON.stringify(firstCount));
+  }
+  await stable.evaluate(async function (id) {
+    const url = "/backend-api/conversations/" + id + "?include_has_versions=true&num_turns=100";
+    await fetch(url, { credentials: "include" });
+    await fetch(url, { credentials: "include" });
+    await fetch(url, { credentials: "include" });
+  }, GAUGE_STABLE);
+  await stable.waitForTimeout(2000);
+  const secondCount = await readCount();
+  const thirdCount = await readCount();
+  if (firstCount.hidden !== secondCount.hidden || firstCount.visible !== secondCount.visible || firstCount.tokens !== secondCount.tokens) {
+    throw new Error("count changed across refreshes " + JSON.stringify({ firstCount: firstCount, secondCount: secondCount, thirdCount: thirdCount }));
+  }
+  if (secondCount.tokens !== thirdCount.tokens) throw new Error("count still moving " + JSON.stringify(thirdCount));
+  const stableLabel = await stable.getByRole("meter").innerText();
+  if (/~\d{3,}/.test(stableLabel)) throw new Error("percent rendered over 100: " + stableLabel);
+  await stable.close();
 
   const claude = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   await claude.waitForTimeout(400);
