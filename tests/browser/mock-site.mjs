@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 const fixtureDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 const CHATGPT_CHAT = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+export const GAUGE_SHORT = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+export const GAUGE_LONG = "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+export const GAUGE_DOM = "33333333-cccc-4ccc-8ccc-cccccccccccc";
 const GPT_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const GPT_B = "bbbbbbbb-2222-4222-8222-222222222222";
 const GPT_C = "cccccccc-3333-4333-8333-333333333333";
@@ -24,6 +27,47 @@ export const CLAUDE_PROJECT = "99999999-9999-4999-8999-999999999999";
 
 function html(name) {
   return readFileSync(path.join(fixtureDir, name), "utf8");
+}
+
+function gaugeConversation(toolText) {
+  return {
+    title: "Gauge",
+    default_model_slug: "gpt-5.2",
+    current_node: "n2",
+    mapping: {
+      n0: { id: "n0", parent: null, message: null },
+      n1: {
+        id: "n1",
+        parent: "n0",
+        message: {
+          author: { role: "user" },
+          content: { content_type: "text", parts: ["Hello"] },
+          metadata: {},
+          recipient: "all"
+        }
+      },
+      tool: {
+        id: "tool",
+        parent: "n1",
+        message: {
+          author: { role: "tool", name: "browser" },
+          content: { content_type: "text", parts: [toolText] },
+          metadata: {},
+          recipient: "all"
+        }
+      },
+      n2: {
+        id: "n2",
+        parent: "tool",
+        message: {
+          author: { role: "assistant" },
+          content: { content_type: "text", parts: ["Hi"] },
+          metadata: { model_slug: "gpt-5.2" },
+          recipient: "all"
+        }
+      }
+    }
+  };
 }
 
 function chatgptConversation(title, user, assistant) {
@@ -67,7 +111,9 @@ const chatgptBodies = {
   [GPT_B]: chatgptConversation("Hello/World?", "Slash title question", "Use a safe filename."),
   [GPT_C]: chatgptConversation("Packing list", "Second packing note", "Duplicate titles stay distinct."),
   [GPT_LOOSE]: chatgptConversation("Loose chat", "Not in a project", "Saved under no-project."),
-  [GPT_DOM]: chatgptConversation("From the page", "Loaded from the page link", "DOM fallback worked.")
+  [GPT_DOM]: chatgptConversation("From the page", "Loaded from the page link", "DOM fallback worked."),
+  [GAUGE_SHORT]: gaugeConversation("z".repeat(400)),
+  [GAUGE_LONG]: gaugeConversation("z".repeat(20000))
 };
 
 function geminiRpc(ask, answer) {
@@ -108,6 +154,8 @@ function handleChatGpt(url) {
   if (pathName === "/g/g-p-domonly/project") return page("chatgpt-dom-project.html");
   if (pathName === "/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
   if (pathName === "/g/g-p-fixture/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
+  if (pathName === "/c/" + GAUGE_SHORT || pathName === "/c/" + GAUGE_LONG) return page("chatgpt-chat.html");
+  if (pathName === "/c/" + GAUGE_DOM) return page("chatgpt-gauge-dom.html");
   if (pathName === "/backend-api/files/file-img1/download") return json({ download_url: "https://chatgpt.com/files-fixture/img1.png", file_name: "photo.png" });
   if (pathName === "/backend-api/files/file-doc1/download") return { status: 404, contentType: "text/plain", body: "gone" };
   if (pathName === "/files-fixture/img1.png") return { status: 200, contentType: "image/png", body: Buffer.from("89504e470d0a1a0a", "hex") };

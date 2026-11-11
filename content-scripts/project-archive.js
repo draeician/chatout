@@ -69,7 +69,9 @@
 
   function setProgress(text) {
     document.documentElement.setAttribute("data-chatout-archive-progress", text);
-    if (statusEl) statusEl.textContent = text;
+    if (!statusEl) return;
+    statusEl.textContent = text || "";
+    statusEl.hidden = !text;
   }
 
   function setResult(result) {
@@ -1362,20 +1364,29 @@
       "<style>",
       ":host{all:initial}",
       ".panel{position:fixed;top:12px;right:12px;z-index:2147483646;display:flex;flex-direction:column;gap:6px;align-items:flex-end;font-family:system-ui,sans-serif}",
+      ".row{display:flex;flex-direction:row;flex-wrap:nowrap;gap:8px;align-items:center;justify-content:flex-end}",
+      "#chatout-context-slot:empty{display:none}",
       "button{appearance:none;border:0;border-radius:999px;background:#111827;color:#f9fafb;font:600 14px/1.2 system-ui,sans-serif;padding:10px 14px;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25)}",
       "button:disabled{opacity:.6;cursor:progress}",
       "button[hidden]{display:none}",
       ".status{max-width:320px;background:#fff;color:#111827;border-radius:10px;padding:8px 10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)}",
+      ".status[hidden]{display:none}",
       "</style>",
       "<div class='panel'>",
+      "<div class='row'>",
+      "<div id='chatout-context-slot'></div>",
       "<button type='button' id='chatout-archive-project'>Archive project</button>",
+      "</div>",
       "<button type='button' id='chatout-archive-cancel' hidden>Cancel</button>",
-      "<div class='status' id='chatout-archive-status' role='status' aria-live='polite'>Save every chat in this project.</div>",
+      "<div class='status' id='chatout-archive-status' role='status' aria-live='polite' hidden></div>",
       "</div>"
     ].join("");
     buttonEl = shadow.getElementById("chatout-archive-project");
     statusEl = shadow.getElementById("chatout-archive-status");
     cancelEl = shadow.getElementById("chatout-archive-cancel");
+    const existingProgress = document.documentElement.getAttribute("data-chatout-archive-progress") || "";
+    statusEl.textContent = existingProgress;
+    statusEl.hidden = !existingProgress;
     cancelEl.hidden = !running;
     cancelEl.addEventListener("click", function () { cancelRun(); });
     buttonEl.addEventListener("click", function () { archiveProject(); });

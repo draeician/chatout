@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { installFixtures, CLAUDE_PROJECT } from "./mock-site.mjs";
+import { installFixtures, CLAUDE_PROJECT, GAUGE_SHORT, GAUGE_LONG, GAUGE_DOM } from "./mock-site.mjs";
 import { closeExtension, launchExtension, serviceWorker, waitForDownload } from "./launch.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -436,6 +436,104 @@ check("gemini falls back to a sidebar without links", async function (context) {
   if (mds.length !== 2) throw new Error(saved.names.join(", ") + " " + JSON.stringify(saved.result));
   const top = unzipRead(saved.file, "_index.md");
   if (!top.includes("read from the sidebar")) throw new Error(top);
+  await page.close();
+});
+
+check("chatgpt context gauge drops the idle label and tracks the conversation", async function (context) {
+  const worker = await serviceWorker(context);
+  await worker.evaluate(function () {
+    return new Promise(function (resolve) { chrome.storage.local.remove("chatoutContextLimit", resolve); });
+  });
+
+  const project = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
+  await project.getByRole("button", { name: "Archive project" }).waitFor();
+  if (await project.getByText("Save every chat in this project").count()) throw new Error("idle label still visible");
+  if (await project.getByRole("meter").count()) throw new Error("gauge shown on a project home");
+  await project.close();
+
+  const page = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_SHORT);
+  await page.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "json";
+  }, null, { timeout: 8000 });
+  const first = Number(await page.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context"); }));
+  const hidden = Number(await page.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-hidden"); }));
+  const visible = Number(await page.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-visible"); }));
+  const limit = await page.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-limit"); });
+  if (!(hidden > visible)) throw new Error("hidden " + hidden + " visible " + visible);
+  if (limit !== "200000") throw new Error("limit " + limit);
+  const tip = await page.getByRole("meter").getAttribute("title");
+  if (!/Hidden\/tool/.test(tip) || !/Visible /.test(tip)) throw new Error(tip);
+  if (await page.getByText("Save every chat in this project").count()) throw new Error("idle label on a chat");
+  await page.close();
+
+  const longer = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_LONG);
+  await longer.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "json";
+  }, null, { timeout: 8000 });
+  const second = Number(await longer.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context"); }));
+  if (!(second > first)) throw new Error("percent did not rise " + first + " -> " + second);
+  await longer.close();
+
+  const dom = await openFixture(context, "https://chatgpt.com/c/" + GAUGE_DOM);
+  await dom.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-context-mode") === "dom";
+  }, null, { timeout: 8000 });
+  const caveat = await dom.getByRole("meter").innerText();
+  if (!/visible text only, may under-read/i.test(caveat)) throw new Error(caveat);
+  if ((await dom.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-limit"); })) !== "40000") {
+    throw new Error("dom ceiling " + await dom.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context-limit"); }));
+  }
+  const before = Number(await dom.evaluate(function () { return document.documentElement.getAttribute("data-chatout-context"); }));
+  await dom.evaluate(function () {
+    const main = document.querySelector("main");
+    const div = document.createElement("div");
+    div.setAttribute("data-message-author-role", "assistant");
+    div.textContent = "y".repeat(20000);
+    main.appendChild(div);
+  });
+  await dom.waitForFunction(function (prev) {
+    return Number(document.documentElement.getAttribute("data-chatout-context")) > prev;
+  }, before, { timeout: 8000 });
+  await dom.close();
+
+  const both = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  await both.getByRole("button", { name: "Archive project" }).waitFor();
+  await both.getByRole("meter").waitFor({ timeout: 8000 });
+  if (await both.getByText("Save every chat in this project").count()) throw new Error("idle label beside the button");
+  const buttonBox = await both.getByRole("button", { name: "Archive project" }).boundingBox();
+  const gaugeBox = await both.getByRole("meter").boundingBox();
+  if (!buttonBox || !gaugeBox) throw new Error("missing box");
+  if (gaugeBox.x + gaugeBox.width > buttonBox.x + 2) throw new Error("gauge overlaps the button " + JSON.stringify({ gaugeBox: gaugeBox, buttonBox: buttonBox }));
+  await both.close();
+
+  const claude = await openFixture(context, "https://claude.ai/chat/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  await claude.waitForTimeout(400);
+  if (await claude.getByRole("meter").count()) throw new Error("gauge shown on Claude");
+  await claude.close();
+});
+
+check("options page saves a ChatGPT context limit", async function (context) {
+  const worker = await serviceWorker(context);
+  const page = await context.newPage();
+  await page.goto("chrome-extension://" + new URL(worker.url()).host + "/options.html");
+  const input = page.locator("#chatout-context-limit-input");
+  await input.waitFor({ timeout: 8000 });
+  await input.fill("50000");
+  await input.blur();
+  await page.waitForFunction(function () {
+    return document.getElementById("chatout-context-limit").getAttribute("data-saved") === "50000";
+  });
+  const stored = await worker.evaluate(function () {
+    return new Promise(function (resolve) {
+      chrome.storage.local.get("chatoutContextLimit", function (bag) { resolve(bag.chatoutContextLimit); });
+    });
+  });
+  if (stored !== 50000) throw new Error("stored " + stored);
+  await input.fill("");
+  await input.blur();
+  await page.waitForFunction(function () {
+    return document.getElementById("chatout-context-limit").getAttribute("data-saved") === "";
+  });
   await page.close();
 });
 
