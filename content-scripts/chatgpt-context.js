@@ -431,7 +431,7 @@
     }
     var resolved = lib.resolveLimit(counted.model, override);
     var limit = mode === "dom" ? lib.visibleOnlyLimit(resolved.limit) : resolved.limit;
-    render(lib.usage(counted.visibleTokens, counted.hiddenTokens, limit, mode, resolved), source);
+    render(lib.usage(counted.visibleTokens, counted.hiddenTokens, limit, mode, resolved, counted.categories), source);
   }
 
   function schedule() {

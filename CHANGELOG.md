@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.27] - 2026-11-11
+
+### Fixed
+- The ChatGPT context gauge showed **100%+** on a short chat whose export was about 9,000 visible tokens. The limit line was right (200,000), and the visible count matched the export. The hidden/tool count was about 1.1 million tokens because every string in message metadata and content was counted: search-result snippets, citation payloads, attachment records, asset pointers, and encrypted reasoning blobs. The gauge now counts only text the model is given: content parts and text fields, tool inputs and outputs, and reasoning text. JSON keys, ids, metadata, and base64 blobs are skipped. The tooltip lists user, assistant, tool, reasoning, and other, plus the limit. "Ask for a resume summary now." is left off when that total is mostly an unexplained "other" bucket.
+- `gpt-6-thinking` was detected, but the limit still said fallback 200,000, because the table only named smaller models. GPT-6, including that slug, now uses its published 1,050,000 token window (922,000 of that is input). An unrecognized model still uses 200,000.
+
 ## [3.7.0.26] - 2026-11-11
 
 ### Fixed

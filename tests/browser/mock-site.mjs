@@ -16,6 +16,7 @@ export const GAUGE_TURN = "44444444-dddd-4ddd-8ddd-dddddddddddd";
 export const GAUGE_MESSAGES = "55555555-eeee-4eee-8eee-eeeeeeeeeeee";
 export const GAUGE_PAGE = "66666666-ffff-4fff-8fff-ffffffffffff";
 export const GAUGE_STABLE = "77777777-abab-4aba-8aba-abababababab";
+export const GAUGE_META = "88888888-cdcd-4cdc-8cdc-cdcdcdcdcdcd";
 const GPT_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const GPT_B = "bbbbbbbb-2222-4222-8222-222222222222";
 const GPT_C = "cccccccc-3333-4333-8333-333333333333";
@@ -171,7 +172,7 @@ function handleChatGpt(url, request) {
   if (pathName === "/c/" + GAUGE_SHORT || pathName === "/c/" + GAUGE_LONG) return page("chatgpt-chat.html");
   if (pathName === "/c/" + GAUGE_DOM) return page("chatgpt-gauge-dom.html");
   if (pathName === "/c/" + GAUGE_TURN) return page("chatgpt-gauge-turn.html");
-  if (pathName === "/c/" + GAUGE_MESSAGES || pathName === "/c/" + GAUGE_PAGE || pathName === "/c/" + GAUGE_STABLE) return page("chatgpt-chat.html");
+  if (pathName === "/c/" + GAUGE_MESSAGES || pathName === "/c/" + GAUGE_PAGE || pathName === "/c/" + GAUGE_STABLE || pathName === "/c/" + GAUGE_META) return page("chatgpt-chat.html");
   if (pathName === "/backend-api/files/file-img1/download") return json({ download_url: "https://chatgpt.com/files-fixture/img1.png", file_name: "photo.png" });
   if (pathName === "/backend-api/files/file-doc1/download") return { status: 404, contentType: "text/plain", body: "gone" };
   if (pathName === "/files-fixture/img1.png") return { status: 200, contentType: "image/png", body: Buffer.from("89504e470d0a1a0a", "hex") };
@@ -244,6 +245,34 @@ function handleChatGpt(url, request) {
         shared,
         noId
       ], { has_previous_page: false, start_cursor: null }));
+    }
+    if (convs[1] === GAUGE_META) {
+      const blob = "m".repeat(900000);
+      const cipher = "Ab3+/xyzQ9".repeat(400);
+      return json(messagePage([
+        { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Summarize the repo"] }, recipient: "all", metadata: { request_id: "req-1" } },
+        { id: "call", author: { role: "assistant" }, content: { content_type: "code", language: "unknown", text: "search(\"repo\")" }, recipient: "web.run", metadata: { model_slug: "gpt-6-thinking" } },
+        {
+          id: "tool",
+          author: { role: "tool", name: "web.run" },
+          content: { content_type: "text", parts: ["file excerpt " + "x".repeat(80)] },
+          recipient: "all",
+          metadata: {
+            search_result_groups: [{ entries: [{ snippet: blob, content: blob, url: "https://example.test/readme" }] }],
+            content_references: [{ matched_text: blob.slice(0, 400), type: "grouped_webpages" }],
+            encrypted_reasoning: cipher,
+            attachments: [{ id: "file-1", name: "shot.png", extracted_text: blob.slice(0, 500) }]
+          }
+        },
+        { id: "think", author: { role: "assistant" }, content: { content_type: "thoughts", thoughts: [{ summary: "Look at the excerpt", content: "The excerpt is short." }] }, metadata: { encrypted_reasoning: cipher }, recipient: "all" },
+        {
+          id: "a",
+          author: { role: "assistant" },
+          content: { content_type: "multimodal_text", parts: [{ content_type: "image_asset_pointer", asset_pointer: "file-service://file-1" }, "The repo is small.", cipher] },
+          metadata: { model_slug: "gpt-6-thinking", content_references: [{ matched_text: "The repo is small.", items: [{ snippet: blob }] }] },
+          recipient: "all"
+        }
+      ], { has_previous_page: false, start_cursor: null }, "gpt-6-thinking"));
     }
     if (convs[1] === GAUGE_MESSAGES) {
       const before = url.searchParams.get("before");

@@ -11,12 +11,16 @@
      Chat A: 816 KB, 185,632 tokens, 314 turns.
      Chat B: 269 KB, 65,757 tokens, 140 turns, heavy connector/tool use.
    Visible text alone does not predict the wall (A and B differ by ~3x).
-   Hidden tool results, file reads, reasoning, and system messages count
-   too. The fallback window is 200,000 tokens, just above Chat A's visible
+   Tool inputs and outputs, reasoning text, and system message text count
+   too, when they are the text the model was given. JSON keys, ids,
+   citation and search metadata, attachment records, asset pointers, and
+   base64 or encrypted blobs do not. The fallback window for an
+   unrecognized model is 200,000 tokens, just above Chat A's visible
    total, so a text-heavy chat turns red (above 80%, at 160,000) with room
-   left to ask for a summary. When only on-screen text is available the
-   ceiling is 40,000, so red starts at 32,000 visible tokens, well before
-   Chat B's 66k death. */
+   left to ask for a summary. GPT-6, including the chatgpt.com slug
+   gpt-6-thinking, has its own published 1,050,000 token window. When only
+   on-screen text is available the ceiling is 40,000, so red starts at
+   32,000 visible tokens, well before Chat B's 66k death. */
 (function (root) {
   "use strict";
 
@@ -25,10 +29,13 @@
   var RED_HINT = "Ask for a resume summary now.";
   var VISIBLE_CAVEAT = "visible text only, may under-read";
 
-  /* Recognized small models only. Anything else, including current
-     flagship and Thinking slugs, uses FALLBACK_LIMIT: the published 128k
-     Thinking input cap is below Chat A's observed wall. */
+  /* GPT-6 publishes a 1,050,000 token context window (922,000 of that is
+     input). chatgpt.com reports that family as gpt-6-thinking, which used
+     to miss this table and show the 200,000 fallback. Unrecognized slugs
+     still use FALLBACK_LIMIT, just above Chat A's observed wall. */
+  var GPT6_LIMIT = 1050000;
   var MODEL_LIMITS = [
+    { id: "gpt-6", re: /gpt-?6/i, limit: GPT6_LIMIT },
     { id: "gpt-3.5", re: /gpt-?3\.5|gpt-?3-5|gpt-35/i, limit: 16000 },
     { id: "instant", re: /gpt-?4o|chatgpt-4o|\binstant\b|\bfast\b/i, limit: 32000 },
     { id: "gpt-4", re: /gpt-?4(?!o)(?![\.\d])/i, limit: 32000 }
@@ -75,7 +82,7 @@
     return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
 
-  function usage(visibleTokens, hiddenTokens, limit, mode, limitInfo) {
+  function usage(visibleTokens, hiddenTokens, limit, mode, limitInfo, categories) {
     var visible = Math.max(0, Math.round(Number(visibleTokens) || 0));
     var hidden = Math.max(0, Math.round(Number(hiddenTokens) || 0));
     var lim = Math.max(1, Math.round(Number(limit) || FALLBACK_LIMIT));
@@ -83,6 +90,16 @@
     var counted = dom ? visible : visible + hidden;
     var percent = (counted / lim) * 100;
     var info = limitInfo || {};
+    var cats = null;
+    if (categories && typeof categories === "object") {
+      cats = {
+        user: Math.max(0, Math.round(Number(categories.user) || 0)),
+        assistant: Math.max(0, Math.round(Number(categories.assistant) || 0)),
+        tool: Math.max(0, Math.round(Number(categories.tool) || 0)),
+        reasoning: Math.max(0, Math.round(Number(categories.reasoning) || 0)),
+        other: Math.max(0, Math.round(Number(categories.other) || 0))
+      };
+    }
     return {
       visibleTokens: visible,
       hiddenTokens: hidden,
@@ -94,7 +111,8 @@
       band: bandFor(percent),
       mode: dom ? "dom" : "json",
       limitSource: dom ? "visible" : (info.source || ""),
-      limitModel: info.model || ""
+      limitModel: info.model || "",
+      categories: cats
     };
   }
 
@@ -107,6 +125,19 @@
     return "Limit " + fmt(u && u.limit) + " (" + name + ").";
   }
 
+  /* The resume line is for a real high reading. It stays quiet when most
+     of the total is an "other" bucket, which is how a metadata walk used
+     to paint a short chat red. */
+  function adviceOk(u) {
+    if (!u || u.band !== "red") return false;
+    var c = u.categories;
+    if (!c) return true;
+    var explained = c.user + c.assistant + c.tool + c.reasoning;
+    var total = u.tokens || 0;
+    if (total > 0 && explained * 5 < total * 4) return false;
+    return true;
+  }
+
   function tooltip(u) {
     var parts;
     if (!u || u.mode === "dom") {
@@ -116,6 +147,19 @@
         "Visible " + fmt(u && u.visibleTokens) + " tokens.",
         "Hidden tool calls are not counted.",
         "Total " + fmt(u && u.tokens) + " tokens."
+      ];
+    } else if (u.categories) {
+      var c = u.categories;
+      parts = [
+        "Estimate " + u.label + ".",
+        limitNote(u),
+        "User " + fmt(c.user) + " tokens.",
+        "Assistant " + fmt(c.assistant) + " tokens.",
+        "Tool " + fmt(c.tool) + " tokens.",
+        "Reasoning " + fmt(c.reasoning) + " tokens.",
+        "Other " + fmt(c.other) + " tokens.",
+        "Total " + fmt(u.tokens) + " tokens.",
+        "About 4 characters per token, not a tokenizer."
       ];
     } else {
       parts = [
@@ -127,41 +171,75 @@
         "About 4 characters per token, not a tokenizer."
       ];
     }
-    if (u && u.band === "red") parts.push(RED_HINT);
+    if (adviceOk(u)) parts.push(RED_HINT);
     return parts.join(" ");
   }
 
-  function pushStrings(value, out, depth) {
-    if (value == null || depth > 12) return;
-    if (typeof value === "string") {
-      out.push(value);
-      return;
+  /* A long base64 or data URL is a blob, not context text. A repeated
+     letter (used by tests and by some tool bodies) is kept. */
+  function isOpaque(s) {
+    if (typeof s !== "string") return false;
+    if (/^data:[^;]{0,80};base64,/i.test(s)) return true;
+    if (s.length < 200) return false;
+    var compact = s.replace(/\s+/g, "");
+    if (compact.length < 200 || !/^[A-Za-z0-9+/=_-]+$/.test(compact)) return false;
+    var seen = {};
+    var kinds = 0;
+    for (var i = 0; i < compact.length; i += 1) {
+      var ch = compact.charAt(i);
+      if (!seen[ch]) {
+        seen[ch] = true;
+        kinds += 1;
+        if (kinds > 8) break;
+      }
     }
-    if (typeof value === "number" || typeof value === "boolean") return;
-    if (Array.isArray(value)) {
-      for (var i = 0; i < value.length; i += 1) pushStrings(value[i], out, depth + 1);
-      return;
-    }
-    if (typeof value === "object") {
-      var keys = Object.keys(value);
-      for (var j = 0; j < keys.length; j += 1) pushStrings(value[keys[j]], out, depth + 1);
-    }
+    if (kinds < 8) return false;
+    var spaces = 0;
+    for (var j = 0; j < s.length; j += 1) if (s.charAt(j) === " ") spaces += 1;
+    return spaces * 12 < s.length;
   }
 
-  function visibleParts(content) {
-    if (!content || typeof content !== "object") return [];
-    var type = String(content.content_type || "text");
-    if (type !== "text" && type !== "multimodal_text" && type !== "code") return [];
-    var parts = [];
-    if (typeof content.text === "string") parts.push(content.text);
-    var raw = content.parts;
-    if (!Array.isArray(raw)) return parts;
-    for (var i = 0; i < raw.length; i += 1) {
-      var part = raw[i];
-      if (typeof part === "string") parts.push(part);
-      else if (part && typeof part === "object" && typeof part.text === "string" && !part.asset_pointer) parts.push(part.text);
+  function pushText(out, s) {
+    if (typeof s !== "string") return;
+    var t = s.trim();
+    if (!t || isOpaque(t)) return;
+    out.push(t);
+  }
+
+  /* Allowlist of model-facing text. Metadata, ids, and asset pointers
+     are never walked. */
+  function textsFromContent(content) {
+    var out = [];
+    if (typeof content === "string") {
+      pushText(out, content);
+      return out;
     }
-    return parts;
+    if (!content || typeof content !== "object") return out;
+    var type = String(content.content_type || "");
+    if (typeof content.text === "string") pushText(out, content.text);
+    if (typeof content.result === "string") pushText(out, content.result);
+    if (type === "reasoning_recap" && typeof content.content === "string") pushText(out, content.content);
+    if ((type === "thoughts" || type === "reasoning_recap" || type === "tether_browsing_display") && typeof content.summary === "string") {
+      pushText(out, content.summary);
+    }
+    var raw = content.parts;
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i += 1) {
+        var part = raw[i];
+        if (typeof part === "string") pushText(out, part);
+        else if (part && typeof part === "object" && typeof part.text === "string" && !part.asset_pointer) pushText(out, part.text);
+      }
+    }
+    var thoughts = content.thoughts;
+    if (Array.isArray(thoughts)) {
+      for (var t = 0; t < thoughts.length; t += 1) {
+        var thought = thoughts[t];
+        if (!thought || typeof thought !== "object") continue;
+        if (typeof thought.summary === "string") pushText(out, thought.summary);
+        if (typeof thought.content === "string") pushText(out, thought.content);
+      }
+    }
+    return out;
   }
 
   function isShownRole(msg) {
@@ -205,23 +283,28 @@
     return "";
   }
 
-  function absorbMessage(msg, visible, hidden) {
+  function contentType(msg) {
+    var content = msg && msg.content;
+    if (!content || typeof content !== "object") return "";
+    return String(content.content_type || "");
+  }
+
+  function categoryOf(msg) {
+    var role = (msg.author && msg.author.role) || "";
+    var type = contentType(msg);
+    if (type === "thoughts" || type === "reasoning_recap" || type === "reasoning") return "reasoning";
+    if (role === "tool") return "tool";
+    if (role === "assistant" && !isShownRole(msg) && (type === "code" || type === "execution_output")) return "tool";
+    if (role === "user") return "user";
+    if (role === "assistant") return "assistant";
+    return "other";
+  }
+
+  function absorbMessage(msg, buckets) {
     if (!msg) return;
-    var shown = isShownRole(msg);
-    var vis = shown ? visibleParts(msg.content) : [];
-    if (shown && typeof msg.content === "string") vis.push(msg.content);
-    var all = [];
-    pushStrings(msg.content, all, 0);
-    pushStrings(msg.metadata, all, 0);
-    if (msg.author && msg.author.name && !shown) all.push(String(msg.author.name));
-    if (msg.recipient && msg.recipient !== "all" && msg.recipient !== "user") all.push(String(msg.recipient));
-    var rest = all.slice();
-    for (var v = 0; v < vis.length; v += 1) {
-      var at = rest.indexOf(vis[v]);
-      if (at >= 0) rest.splice(at, 1);
-    }
-    if (vis.length) visible.push(vis.join("\n"));
-    if (rest.length) hidden.push(rest.join("\n"));
+    var texts = textsFromContent(msg.content);
+    if (!texts.length) return;
+    buckets[categoryOf(msg)].push(texts.join("\n"));
   }
 
   function messageNode(msg) {
@@ -235,8 +318,7 @@
     var id = node.id || node.message_id;
     if (id != null && typeof id !== "object" && String(id)) return "id:" + String(id);
     var role = (node.author && node.author.role) || "";
-    var bits = [];
-    pushStrings(node.content, bits, 0);
+    var bits = textsFromContent(node.content);
     if (!bits.length) return "";
     return "body:" + role + "\n" + bits.join("\n");
   }
@@ -262,27 +344,44 @@
   /* Mapping nodes, or the paginated messages list ChatGPT now returns.
      Orphans in a mapping are not in the live context, so that path can read high.
      A messages list is deduped before counting so a repeated snapshot cannot grow. */
+  function emptyBuckets() {
+    return { user: [], assistant: [], tool: [], reasoning: [], other: [] };
+  }
+
+  function tally(buckets) {
+    function n(key) { return estimateTokens(buckets[key].join("\n")); }
+    var categories = {
+      user: n("user"),
+      assistant: n("assistant"),
+      tool: n("tool"),
+      reasoning: n("reasoning"),
+      other: n("other")
+    };
+    return {
+      categories: categories,
+      visibleTokens: categories.user + categories.assistant,
+      hiddenTokens: categories.tool + categories.reasoning + categories.other
+    };
+  }
+
   function countConversation(data) {
-    var visible = [];
-    var hidden = [];
+    var buckets = emptyBuckets();
     var model = "";
     if (data && data.mapping && !(data.messages && data.messages.length)) {
       var keys = Object.keys(data.mapping);
       for (var i = 0; i < keys.length; i += 1) {
         var node = data.mapping[keys[i]];
-        absorbMessage(node && node.message, visible, hidden);
+        absorbMessage(node && node.message, buckets);
       }
       model = modelFromConversation(data);
     } else {
       var list = dedupeMessages([data && data.messages]);
-      for (var j = 0; j < list.length; j += 1) absorbMessage(list[j], visible, hidden);
+      for (var j = 0; j < list.length; j += 1) absorbMessage(list[j], buckets);
       model = modelFromMessages({ messages: list, default_model_slug: data && data.default_model_slug, model: data && data.model });
     }
-    return {
-      visibleTokens: estimateTokens(visible.join("\n")),
-      hiddenTokens: estimateTokens(hidden.join("\n")),
-      model: model
-    };
+    var totals = tally(buckets);
+    totals.model = model;
+    return totals;
   }
 
   function conversationIdFromPath(pathname) {
@@ -297,6 +396,7 @@
 
   root.__CHATOUT_CONTEXT_LIB__ = {
     FALLBACK_LIMIT: FALLBACK_LIMIT,
+    GPT6_LIMIT: GPT6_LIMIT,
     VISIBLE_ONLY_LIMIT: VISIBLE_ONLY_LIMIT,
     RED_HINT: RED_HINT,
     VISIBLE_CAVEAT: VISIBLE_CAVEAT,
