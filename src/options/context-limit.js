@@ -11,7 +11,7 @@
     "<span style='font-weight:600'>ChatGPT context limit</span>" +
     "<input id='chatout-context-limit-input' type='number' min='1000' max='2000000' step='1000' inputmode='numeric' placeholder='Automatic' aria-label='ChatGPT context limit in tokens' style='width:11em;padding:4px 8px'>" +
     "<span>tokens</span></label>" +
-    "<div style='color:#4b5563;margin-top:2px'>Blank uses the model table. GPT-6, including gpt-6-thinking, is 1,050,000 tokens. An unrecognized model stays at 200,000. The gauge estimates the open ChatGPT conversation (~4 characters per token) from message text, tool text, and reasoning text.</div>" +
+    "<div style='color:#4b5563;margin-top:2px'>Blank uses the model table. GPT-6, including gpt-6-thinking, is assumed at 1,050,000 tokens from the GPT-6 API docs. An unrecognized model stays at 200,000. The gauge estimates the open ChatGPT conversation (~4 characters per token) from message text, tool text, and reasoning text.</div>" +
     "<div id='chatout-context-limit-error' style='color:#b91c1c' hidden></div>";
   document.body.appendChild(box);
   var input = box.querySelector("#chatout-context-limit-input");

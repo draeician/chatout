@@ -17,6 +17,7 @@ export const GAUGE_MESSAGES = "55555555-eeee-4eee-8eee-eeeeeeeeeeee";
 export const GAUGE_PAGE = "66666666-ffff-4fff-8fff-ffffffffffff";
 export const GAUGE_STABLE = "77777777-abab-4aba-8aba-abababababab";
 export const GAUGE_META = "88888888-cdcd-4cdc-8cdc-cdcdcdcdcdcd";
+export const GAUGE_GITHUB = "99999999-bcbc-4bcb-8bcb-bcbcbcbcbcbc";
 const GPT_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const GPT_B = "bbbbbbbb-2222-4222-8222-222222222222";
 const GPT_C = "cccccccc-3333-4333-8333-333333333333";
@@ -172,7 +173,7 @@ function handleChatGpt(url, request) {
   if (pathName === "/c/" + GAUGE_SHORT || pathName === "/c/" + GAUGE_LONG) return page("chatgpt-chat.html");
   if (pathName === "/c/" + GAUGE_DOM) return page("chatgpt-gauge-dom.html");
   if (pathName === "/c/" + GAUGE_TURN) return page("chatgpt-gauge-turn.html");
-  if (pathName === "/c/" + GAUGE_MESSAGES || pathName === "/c/" + GAUGE_PAGE || pathName === "/c/" + GAUGE_STABLE || pathName === "/c/" + GAUGE_META) return page("chatgpt-chat.html");
+  if (pathName === "/c/" + GAUGE_MESSAGES || pathName === "/c/" + GAUGE_PAGE || pathName === "/c/" + GAUGE_STABLE || pathName === "/c/" + GAUGE_META || pathName === "/c/" + GAUGE_GITHUB) return page("chatgpt-chat.html");
   if (pathName === "/backend-api/files/file-img1/download") return json({ download_url: "https://chatgpt.com/files-fixture/img1.png", file_name: "photo.png" });
   if (pathName === "/backend-api/files/file-doc1/download") return { status: 404, contentType: "text/plain", body: "gone" };
   if (pathName === "/files-fixture/img1.png") return { status: 200, contentType: "image/png", body: Buffer.from("89504e470d0a1a0a", "hex") };
@@ -245,6 +246,32 @@ function handleChatGpt(url, request) {
         shared,
         noId
       ], { has_previous_page: false, start_cursor: null }));
+    }
+    if (convs[1] === GAUGE_GITHUB) {
+      const sentence = "The repository is a small Python service with a readme and tests. ";
+      const userText = sentence.repeat(80);
+      const assistantText = sentence.repeat(80);
+      const fileA = "F".repeat(20000);
+      const payload = JSON.stringify({
+        files: [
+          { path: "README.md", sha: "abc", content: fileA },
+          { path: "src/app.py", sha: "def", content: "G".repeat(20000) }
+        ],
+        versions: [{ ref: "main", files: [{ path: "README.md", content: fileA }] }]
+      });
+      const search = JSON.stringify({
+        search_results: [{ title: "README", url: "https://example.test/readme", snippet: "S".repeat(4000), content: "C".repeat(20000) }]
+      });
+      return json(messagePage([
+        { id: "u", author: { role: "user" }, content: { content_type: "text", parts: [userText] }, recipient: "all", metadata: {} },
+        { id: "call", author: { role: "assistant" }, content: { content_type: "code", language: "unknown", text: "get_file(\"README.md\")" }, recipient: "github", metadata: { model_slug: "gpt-6-thinking" } },
+        { id: "files", author: { role: "tool", name: "github" }, content: { content_type: "text", parts: [payload], text: payload, result: payload }, recipient: "all", metadata: {} },
+        { id: "search", author: { role: "tool", name: "web.run" }, content: { content_type: "text", parts: [search], text: search }, recipient: "all", metadata: {} },
+        { id: "browse", author: { role: "tool", name: "browser" }, content: { content_type: "tether_browsing_display", result: "P".repeat(20000), summary: "A short page summary." }, recipient: "all", metadata: {} },
+        { id: "quote", author: { role: "tool", name: "browser" }, content: { content_type: "tether_quote", url: "https://example.test/readme", title: "README", text: "Q".repeat(20000) }, recipient: "all", metadata: {} },
+        { id: "out", author: { role: "tool", name: "python" }, content: { content_type: "execution_output", text: "line\n".repeat(8000) }, recipient: "all", metadata: {} },
+        { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: [assistantText] }, recipient: "all", metadata: { model_slug: "gpt-6-thinking" } }
+      ], { has_previous_page: false, start_cursor: null }, "gpt-6-thinking"));
     }
     if (convs[1] === GAUGE_META) {
       const blob = "m".repeat(900000);

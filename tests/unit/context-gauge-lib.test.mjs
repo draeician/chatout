@@ -320,3 +320,75 @@ test("a short chat with connector metadata stays under 10%", function () {
   assert.doesNotMatch(tip, /Ask for a resume summary now/);
   assert.doesNotMatch(tip, /100%\+/);
 });
+
+test("tool text more than 5x the conversation is uncertain and does not ask for a resume", function () {
+  const cats = { user: 651, assistant: 8297, tool: 1015216, reasoning: 1432, other: 0 };
+  const reading = lib.usage(651 + 8297, 1015216 + 1432, lib.GPT6_LIMIT, "json", { source: "gpt-6", model: "gpt-6-thinking" }, cats);
+  assert.equal(reading.label, "uncertain");
+  assert.equal(reading.uncertain, true);
+  const tip = lib.tooltip(reading);
+  assert.match(tip, /Estimate uncertain/);
+  assert.match(tip, /more than 5 times the conversation/);
+  assert.doesNotMatch(tip, /Ask for a resume summary now/);
+});
+
+test("a github connector chat with stored tool payloads stays near the visible text", function () {
+  const sentence = "The repository is a small Python service with a readme and tests. ";
+  const userText = sentence.repeat(80);
+  const assistantText = sentence.repeat(80);
+  const fileA = "F".repeat(20000);
+  const fileB = "G".repeat(20000);
+  const payload = JSON.stringify({
+    files: [
+      { path: "README.md", sha: "abc", content: fileA },
+      { path: "src/app.py", sha: "def", content: fileB }
+    ],
+    versions: [{ ref: "main", files: [{ path: "README.md", content: fileA }] }]
+  });
+  const search = JSON.stringify({
+    search_results: [{ title: "README", url: "https://example.test/readme", snippet: "S".repeat(4000), content: "C".repeat(20000) }]
+  });
+  const stdout = "line\n".repeat(8000);
+  const data = {
+    default_model_slug: "gpt-6-thinking",
+    messages: [
+      { id: "u", author: { role: "user" }, content: { content_type: "text", parts: [userText] }, recipient: "all", metadata: {} },
+      { id: "call", author: { role: "assistant" }, content: { content_type: "code", language: "unknown", text: "get_file(\"README.md\")" }, recipient: "github", metadata: { model_slug: "gpt-6-thinking" } },
+      { id: "files", author: { role: "tool", name: "github" }, content: { content_type: "text", parts: [payload], text: payload, result: payload }, recipient: "all", metadata: {} },
+      { id: "search", author: { role: "tool", name: "web.run" }, content: { content_type: "text", parts: [search], text: search }, recipient: "all", metadata: {} },
+      { id: "browse", author: { role: "tool", name: "browser" }, content: { content_type: "tether_browsing_display", result: "P".repeat(20000), summary: "A short page summary." }, recipient: "all", metadata: {} },
+      { id: "quote", author: { role: "tool", name: "browser" }, content: { content_type: "tether_quote", url: "https://example.test/readme", title: "README", text: "Q".repeat(20000) }, recipient: "all", metadata: {} },
+      { id: "out", author: { role: "tool", name: "python" }, content: { content_type: "execution_output", text: stdout }, recipient: "all", metadata: {} },
+      { id: "think", author: { role: "assistant" }, content: { content_type: "thoughts", thoughts: [{ summary: "Read the readme", content: "The service is small." }] }, recipient: "all", metadata: {} },
+      { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: [assistantText] }, recipient: "all", metadata: { model_slug: "gpt-6-thinking" } }
+    ]
+  };
+  assert.ok(lib.estimateTokens(payload) > 10000);
+  const counted = lib.countConversation(data);
+  const total = counted.visibleTokens + counted.hiddenTokens;
+  assert.equal(counted.categories.user, lib.estimateTokens(userText));
+  assert.equal(counted.categories.assistant, lib.estimateTokens(assistantText));
+  assert.equal(counted.categories.other, 0);
+  assert.equal(counted.toolCapped, true);
+  assert.ok(counted.categories.tool <= lib.TOOL_MESSAGE_CAP_TOKENS + 30);
+  assert.ok(counted.categories.tool > lib.TOOL_MESSAGE_CAP_TOKENS / 2);
+  assert.ok(total <= counted.visibleTokens * 3, "total " + total + " visible " + counted.visibleTokens + " tool " + counted.categories.tool);
+  const limit = lib.resolveLimit(counted.model, null);
+  const reading = lib.usage(counted.visibleTokens, counted.hiddenTokens, limit.limit, "json", limit, counted.categories, { toolCapped: counted.toolCapped });
+  assert.ok(reading.percent < 10);
+  assert.equal(reading.uncertain, false);
+  assert.match(reading.label, /^~/);
+  const tip = lib.tooltip(reading);
+  assert.match(tip, /Tool output capped/);
+  assert.doesNotMatch(tip, /Ask for a resume summary now/);
+  const report = lib.debugConversation(data);
+  assert.ok(report.length < 25000, "report leaked text: " + report.length);
+  assert.match(report, /stored-payload/);
+  assert.match(report, /duplicate/);
+  assert.match(report, /tether-cache/);
+  assert.match(report, /capped=yes/);
+  assert.match(report, /role=tool/);
+  assert.match(report, /top 20 fields/);
+  assert.doesNotMatch(report, /FFFFFFF/);
+  assert.doesNotMatch(report, /line\nline/);
+});
