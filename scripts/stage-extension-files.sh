@@ -7,7 +7,6 @@ STAGE="${1:?stage directory required}"
 mkdir -p "$STAGE/content-scripts"
 
 cp "$ROOT/manifest.json" "$ROOT/background.js" "$ROOT/popup.html" "$ROOT/options.html" \
-   "$ROOT/options-context-limit.js" \
    "$ROOT/inject-web.js" \
    "$ROOT/icon-16.png" "$ROOT/icon-32.png" "$ROOT/icon-48.png" "$ROOT/icon-128.png" \
    "$STAGE/"
@@ -18,9 +17,6 @@ cp "$ROOT/content-scripts/config.js" \
    "$ROOT/content-scripts/start.js" \
    "$ROOT/content-scripts/project-archive-lib.js" \
    "$ROOT/content-scripts/project-archive.js" \
-   "$ROOT/content-scripts/context-gauge-lib.js" \
-   "$ROOT/content-scripts/chatgpt-context.js" \
-   "$ROOT/content-scripts/chatgpt-fetch-hook.js" \
    "$STAGE/content-scripts/"
 # Referenced by manifest content_scripts (debug harnesses; gated in-page)
 if [[ -f "$ROOT/content-scripts/grok-title-debug.js" ]]; then

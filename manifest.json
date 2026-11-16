@@ -9,24 +9,10 @@
    "content_scripts": [
       {
          "js": [
-            "content-scripts/chatgpt-fetch-hook.js"
-         ],
-         "matches": [
-            "https://chatgpt.com/*",
-            "https://chat.openai.com/*"
-         ],
-         "run_at": "document_start",
-         "world": "MAIN",
-         "all_frames": false
-      },
-      {
-         "js": [
             "content-scripts/config.js",
             "content-scripts/content.js",
             "content-scripts/project-archive-lib.js",
-            "content-scripts/project-archive.js",
-            "content-scripts/context-gauge-lib.js",
-            "content-scripts/chatgpt-context.js"
+            "content-scripts/project-archive.js"
          ],
          "matches": [
             "https://aistudio.google.com/*",
@@ -115,7 +101,7 @@
       "downloads"
    ],
    "update_url": "https://clients2.google.com/service/update2/crx",
-   "version": "3.7.0.28",
+   "version": "3.7.0.23",
    "web_accessible_resources": [
       {
          "matches": [

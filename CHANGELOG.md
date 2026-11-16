@@ -5,38 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.7.0.28] - 2026-11-11
-
-### Fixed
-- The ChatGPT context gauge read about **98%** on the same short chat after 3.7.0.27. User and assistant tokens still matched the export (about 9,000). Tool tokens were about 1,015,000. That text lives on tool messages ChatGPT stores but does not keep in the model window: the same connector body copied into `parts`, `text`, and `result`; tether browsing page text and tether quotes; and JSON file-content or search-result payloads. The gauge counts each distinct tool field once, skips those caches, and caps any remaining tool body at 2,000 tokens per message. The tooltip says "Tool output capped." when the cap applies. When tool tokens are more than 5 times the user, assistant, and reasoning text, the label is **uncertain** and "Ask for a resume summary now." is left off.
-- On a chatgpt.com chat, the page console command `await __chatoutContextDebug()` prints a field report: role, recipient, content type, character count per field, whether that field was counted, and the 20 largest fields. The report does not include message text.
-- The 1,050,000 GPT-6 window is the context size OpenAI publishes for GPT-6 Astra, Sol, and Luna, with 922,000 maximum input tokens, on https://developers.openai.com/api/docs/models/gpt-6-astra and the matching Sol and Luna pages (checked 2026-11-11). chatgpt.com's `gpt-6-thinking` slug is not that API id. Using this window for it is an assumption.
-
-## [3.7.0.27] - 2026-11-11
-
-### Fixed
-- The ChatGPT context gauge showed **100%+** on a short chat whose export was about 9,000 visible tokens. The limit line was right (200,000), and the visible count matched the export. The hidden/tool count was about 1.1 million tokens because every string in message metadata and content was counted: search-result snippets, citation payloads, attachment records, asset pointers, and encrypted reasoning blobs. The gauge now counts only text the model is given: content parts and text fields, tool inputs and outputs, and reasoning text. JSON keys, ids, metadata, and base64 blobs are skipped. The tooltip lists user, assistant, tool, reasoning, and other, plus the limit. "Ask for a resume summary now." is left off when that total is mostly an unexplained "other" bucket.
-- `gpt-6-thinking` was detected, but the limit still said fallback 200,000, because the table only named smaller models. GPT-6, including that slug, now uses its published 1,050,000 token window (922,000 of that is input). An unrecognized model still uses 200,000.
-
-## [3.7.0.26] - 2026-11-11
-
-### Fixed
-- The ChatGPT context gauge climbed on a conversation that was not growing (~466%, then ~947%). Every conversation response was appended to one saved message list, and the next refresh counted that whole list. The dedupe key fell back to the list index when a message had no stable id, so a second copy of the same snapshot was kept and the total doubled. Each refresh now counts one fresh snapshot. Messages are deduped by id, and a message with no id is deduped by its body, so overlapping pages and repeated polls count once. The label stops at **100%+** when the estimate is over the limit. The tooltip names which limit was used (the model, fallback, or your setting) and shows the raw visible, hidden, and total token counts.
-
-## [3.7.0.25] - 2026-11-11
-
-### Fixed
-- The ChatGPT context gauge sat to the left of **Archive project**, and the line “visible text only, may under-read” ran across the header. The gauge is now a compact pill under that button, lined up with the button’s right edge. That caveat is only in the tooltip.
-- On a logged-in conversation the gauge fell back to visible text and showed ~0%. ChatGPT loads a chat with `GET /backend-api/conversations/{id}` (a paginated `messages` list). The gauge requested the older `/backend-api/conversation/{id}` and discarded any body that had no `mapping`, so the read failed. The on-screen fallback only looked at `main [data-message-author-role]`, which current turns do not use, so the count stayed at zero and a failed read was not retried. The gauge now counts that messages list (and still accepts a mapping), follows older pages, and if the extension’s own request is rejected it uses the conversation response the page already loaded. The visible-text fallback also reads `[data-turn]` and conversation turns, and it stays hidden instead of showing ~0% when it finds no message text.
-
-## [3.7.0.24] - 2026-11-11
-
-### Added
-- ChatGPT context gauge beside the upper-right button on an open conversation. It shows an estimate such as `~62%` plus a small bar (green under 60%, amber 60–80%, red above 80%). Red adds “Ask for a resume summary now.” The count comes from the conversation JSON and includes tool, system, and hidden messages plus attachment metadata, not only the visible turns. The tooltip lists visible tokens and hidden/tool tokens separately. If that JSON cannot be read, the gauge uses on-screen text, says “visible text only, may under-read,” and turns red well before 66,000 visible tokens. The default window is 200,000 tokens. Settings has a “ChatGPT context limit” field that replaces it. Counting is about 4 characters per token, not a tokenizer.
-
-### Changed
-- The idle line “Save every chat in this project.” under **Archive project** is no longer shown. Progress and the final summary still appear while an archive is running.
-
 ## [3.7.0.23] - 2026-10-31
 
 ### Changed
