@@ -9,15 +9,6 @@ import { fileURLToPath } from "node:url";
 const fixtureDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 const CHATGPT_CHAT = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
-export const GAUGE_SHORT = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-export const GAUGE_LONG = "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-export const GAUGE_DOM = "33333333-cccc-4ccc-8ccc-cccccccccccc";
-export const GAUGE_TURN = "44444444-dddd-4ddd-8ddd-dddddddddddd";
-export const GAUGE_MESSAGES = "55555555-eeee-4eee-8eee-eeeeeeeeeeee";
-export const GAUGE_PAGE = "66666666-ffff-4fff-8fff-ffffffffffff";
-export const GAUGE_STABLE = "77777777-abab-4aba-8aba-abababababab";
-export const GAUGE_META = "88888888-cdcd-4cdc-8cdc-cdcdcdcdcdcd";
-export const GAUGE_GITHUB = "99999999-bcbc-4bcb-8bcb-bcbcbcbcbcbc";
 const GPT_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const GPT_B = "bbbbbbbb-2222-4222-8222-222222222222";
 const GPT_C = "cccccccc-3333-4333-8333-333333333333";
@@ -33,47 +24,6 @@ export const CLAUDE_PROJECT = "99999999-9999-4999-8999-999999999999";
 
 function html(name) {
   return readFileSync(path.join(fixtureDir, name), "utf8");
-}
-
-function gaugeConversation(toolText) {
-  return {
-    title: "Gauge",
-    default_model_slug: "gpt-5.2",
-    current_node: "n2",
-    mapping: {
-      n0: { id: "n0", parent: null, message: null },
-      n1: {
-        id: "n1",
-        parent: "n0",
-        message: {
-          author: { role: "user" },
-          content: { content_type: "text", parts: ["Hello"] },
-          metadata: {},
-          recipient: "all"
-        }
-      },
-      tool: {
-        id: "tool",
-        parent: "n1",
-        message: {
-          author: { role: "tool", name: "browser" },
-          content: { content_type: "text", parts: [toolText] },
-          metadata: {},
-          recipient: "all"
-        }
-      },
-      n2: {
-        id: "n2",
-        parent: "tool",
-        message: {
-          author: { role: "assistant" },
-          content: { content_type: "text", parts: ["Hi"] },
-          metadata: { model_slug: "gpt-5.2" },
-          recipient: "all"
-        }
-      }
-    }
-  };
 }
 
 function chatgptConversation(title, user, assistant) {
@@ -117,9 +67,7 @@ const chatgptBodies = {
   [GPT_B]: chatgptConversation("Hello/World?", "Slash title question", "Use a safe filename."),
   [GPT_C]: chatgptConversation("Packing list", "Second packing note", "Duplicate titles stay distinct."),
   [GPT_LOOSE]: chatgptConversation("Loose chat", "Not in a project", "Saved under no-project."),
-  [GPT_DOM]: chatgptConversation("From the page", "Loaded from the page link", "DOM fallback worked."),
-  [GAUGE_SHORT]: gaugeConversation("z".repeat(400)),
-  [GAUGE_LONG]: gaugeConversation("z".repeat(20000))
+  [GPT_DOM]: chatgptConversation("From the page", "Loaded from the page link", "DOM fallback worked.")
 };
 
 function geminiRpc(ask, answer) {
@@ -151,17 +99,7 @@ function page(name) {
   return { status: 200, contentType: "text/html; charset=utf-8", body: html(name) };
 }
 
-function messagePage(messages, pageInfo, model) {
-  return {
-    title: "Gauge",
-    default_model_slug: model || "gpt-5.2",
-    current_node: "n2",
-    messages: messages,
-    page_info: pageInfo
-  };
-}
-
-function handleChatGpt(url, request) {
+function handleChatGpt(url) {
   const pathName = url.pathname;
   if (pathName === "/api/auth/session") {
     return json({ accessToken: "fixture-token", account: { id: "acc-fixture" } });
@@ -170,10 +108,6 @@ function handleChatGpt(url, request) {
   if (pathName === "/g/g-p-domonly/project") return page("chatgpt-dom-project.html");
   if (pathName === "/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
   if (pathName === "/g/g-p-fixture/c/" + CHATGPT_CHAT) return page("chatgpt-chat.html");
-  if (pathName === "/c/" + GAUGE_SHORT || pathName === "/c/" + GAUGE_LONG) return page("chatgpt-chat.html");
-  if (pathName === "/c/" + GAUGE_DOM) return page("chatgpt-gauge-dom.html");
-  if (pathName === "/c/" + GAUGE_TURN) return page("chatgpt-gauge-turn.html");
-  if (pathName === "/c/" + GAUGE_MESSAGES || pathName === "/c/" + GAUGE_PAGE || pathName === "/c/" + GAUGE_STABLE || pathName === "/c/" + GAUGE_META || pathName === "/c/" + GAUGE_GITHUB) return page("chatgpt-chat.html");
   if (pathName === "/backend-api/files/file-img1/download") return json({ download_url: "https://chatgpt.com/files-fixture/img1.png", file_name: "photo.png" });
   if (pathName === "/backend-api/files/file-doc1/download") return { status: 404, contentType: "text/plain", body: "gone" };
   if (pathName === "/files-fixture/img1.png") return { status: 200, contentType: "image/png", body: Buffer.from("89504e470d0a1a0a", "hex") };
@@ -219,106 +153,9 @@ function handleChatGpt(url, request) {
   if (pathName === "/backend-api/gizmos/g-p-domonly/conversations") {
     return { status: 404, contentType: "application/json", body: "{\"error\":\"missing\"}" };
   }
-  const fromPage = request && (request.headers()["x-chatout-page"] || "") === "1";
-  const convs = pathName.match(/^\/backend-api\/conversations\/([^/]+)$/);
-  if (convs) {
-    if (convs[1] === GAUGE_PAGE) {
-      if (!fromPage) return { status: 403, contentType: "application/json", body: "{}" };
-      return json(messagePage([
-        { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
-        { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["z".repeat(800)] }, metadata: {} },
-        { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } }
-      ], { has_previous_page: false, start_cursor: null }));
-    }
-    if (convs[1] === GAUGE_STABLE) {
-      const shared = { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["z".repeat(400)] }, metadata: {} };
-      const noId = { author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["q".repeat(400)] }, metadata: {} };
-      const before = url.searchParams.get("before");
-      if (!before) {
-        return json(messagePage([
-          { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } },
-          shared,
-          noId
-        ], { has_previous_page: true, start_cursor: "older-stable" }));
-      }
-      return json(messagePage([
-        { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
-        shared,
-        noId
-      ], { has_previous_page: false, start_cursor: null }));
-    }
-    if (convs[1] === GAUGE_GITHUB) {
-      const sentence = "The repository is a small Python service with a readme and tests. ";
-      const userText = sentence.repeat(80);
-      const assistantText = sentence.repeat(80);
-      const fileA = "F".repeat(20000);
-      const payload = JSON.stringify({
-        files: [
-          { path: "README.md", sha: "abc", content: fileA },
-          { path: "src/app.py", sha: "def", content: "G".repeat(20000) }
-        ],
-        versions: [{ ref: "main", files: [{ path: "README.md", content: fileA }] }]
-      });
-      const search = JSON.stringify({
-        search_results: [{ title: "README", url: "https://example.test/readme", snippet: "S".repeat(4000), content: "C".repeat(20000) }]
-      });
-      return json(messagePage([
-        { id: "u", author: { role: "user" }, content: { content_type: "text", parts: [userText] }, recipient: "all", metadata: {} },
-        { id: "call", author: { role: "assistant" }, content: { content_type: "code", language: "unknown", text: "get_file(\"README.md\")" }, recipient: "github", metadata: { model_slug: "gpt-6-thinking" } },
-        { id: "files", author: { role: "tool", name: "github" }, content: { content_type: "text", parts: [payload], text: payload, result: payload }, recipient: "all", metadata: {} },
-        { id: "search", author: { role: "tool", name: "web.run" }, content: { content_type: "text", parts: [search], text: search }, recipient: "all", metadata: {} },
-        { id: "browse", author: { role: "tool", name: "browser" }, content: { content_type: "tether_browsing_display", result: "P".repeat(20000), summary: "A short page summary." }, recipient: "all", metadata: {} },
-        { id: "quote", author: { role: "tool", name: "browser" }, content: { content_type: "tether_quote", url: "https://example.test/readme", title: "README", text: "Q".repeat(20000) }, recipient: "all", metadata: {} },
-        { id: "out", author: { role: "tool", name: "python" }, content: { content_type: "execution_output", text: "line\n".repeat(8000) }, recipient: "all", metadata: {} },
-        { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: [assistantText] }, recipient: "all", metadata: { model_slug: "gpt-6-thinking" } }
-      ], { has_previous_page: false, start_cursor: null }, "gpt-6-thinking"));
-    }
-    if (convs[1] === GAUGE_META) {
-      const blob = "m".repeat(900000);
-      const cipher = "Ab3+/xyzQ9".repeat(400);
-      return json(messagePage([
-        { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Summarize the repo"] }, recipient: "all", metadata: { request_id: "req-1" } },
-        { id: "call", author: { role: "assistant" }, content: { content_type: "code", language: "unknown", text: "search(\"repo\")" }, recipient: "web.run", metadata: { model_slug: "gpt-6-thinking" } },
-        {
-          id: "tool",
-          author: { role: "tool", name: "web.run" },
-          content: { content_type: "text", parts: ["file excerpt " + "x".repeat(80)] },
-          recipient: "all",
-          metadata: {
-            search_result_groups: [{ entries: [{ snippet: blob, content: blob, url: "https://example.test/readme" }] }],
-            content_references: [{ matched_text: blob.slice(0, 400), type: "grouped_webpages" }],
-            encrypted_reasoning: cipher,
-            attachments: [{ id: "file-1", name: "shot.png", extracted_text: blob.slice(0, 500) }]
-          }
-        },
-        { id: "think", author: { role: "assistant" }, content: { content_type: "thoughts", thoughts: [{ summary: "Look at the excerpt", content: "The excerpt is short." }] }, metadata: { encrypted_reasoning: cipher }, recipient: "all" },
-        {
-          id: "a",
-          author: { role: "assistant" },
-          content: { content_type: "multimodal_text", parts: [{ content_type: "image_asset_pointer", asset_pointer: "file-service://file-1" }, "The repo is small.", cipher] },
-          metadata: { model_slug: "gpt-6-thinking", content_references: [{ matched_text: "The repo is small.", items: [{ snippet: blob }] }] },
-          recipient: "all"
-        }
-      ], { has_previous_page: false, start_cursor: null }, "gpt-6-thinking"));
-    }
-    if (convs[1] === GAUGE_MESSAGES) {
-      const before = url.searchParams.get("before");
-      if (!before) {
-        return json(messagePage([
-          { id: "u", author: { role: "user" }, content: { content_type: "text", parts: ["Hello"] }, recipient: "all", metadata: {} },
-          { id: "a", author: { role: "assistant" }, content: { content_type: "text", parts: ["Hi"] }, recipient: "all", metadata: { model_slug: "gpt-5.2" } }
-        ], { has_previous_page: true, start_cursor: "older-1" }));
-      }
-      return json(messagePage([
-        { id: "t", author: { role: "tool", name: "browser" }, content: { content_type: "text", parts: ["z".repeat(800)] }, metadata: {} }
-      ], { has_previous_page: false, start_cursor: null }));
-    }
-    return { status: 404, contentType: "text/plain", body: "unknown conversation" };
-  }
   const conv = pathName.match(/^\/backend-api\/conversation\/([^/]+)$/);
   if (conv) {
     if (conv[1] === GPT_D) return { status: 500, contentType: "text/plain", body: "nope" };
-    if (conv[1] === GAUGE_PAGE) return { status: 403, contentType: "application/json", body: "{}" };
     const body = chatgptBodies[conv[1]];
     if (!body) return { status: 404, contentType: "text/plain", body: "unknown conversation" };
     return json(body);
@@ -460,7 +297,7 @@ export async function installFixtures(context) {
     const request = route.request();
     const url = new URL(request.url());
     let hit = null;
-    if (url.hostname === "chatgpt.com") hit = handleChatGpt(url, request);
+    if (url.hostname === "chatgpt.com") hit = handleChatGpt(url);
     else if (url.hostname === "claude.ai") hit = handleClaude(url);
     else if (url.hostname === "gemini.google.com") hit = handleGemini(url, request);
     else if (url.hostname === "grok.com") hit = handleGrok(url, request);
