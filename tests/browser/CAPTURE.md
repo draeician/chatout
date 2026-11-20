@@ -50,4 +50,4 @@ node tests/browser/live-archive.mjs \
   --delay 400
 ```
 
-The script opens the URL, clicks **Archive project**, waits until the zip is on disk, copies it to `--out`, and prints `Exported N, failed M`. `--delay` is the pause between chats in milliseconds (default 400). A failed chat does not stop the run; the zip's `_index.md` names it.
+The script opens the URL, opens the ChatOut popup for that tab, clicks **Archive project**, waits until the zip is on disk, copies it to `--out`, and prints `Exported N, failed M`. `--delay` is the pause between chats in milliseconds (default 400). A failed chat does not stop the run; the zip's `_index.md` names it.

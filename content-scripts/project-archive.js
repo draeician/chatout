@@ -19,10 +19,10 @@
     : globalThis.chrome;
 
   let running = false;
+  let runMode = "";
   let lastResult = null;
   let cancelRequested = false;
   let abortCtl = null;
-  let cancelEl = null;
   const CANCELLED = "Archive cancelled";
 
   function checkCancel() {
@@ -32,12 +32,10 @@
   function beginRun() {
     cancelRequested = false;
     abortCtl = typeof AbortController === "function" ? new AbortController() : null;
-    if (cancelEl) cancelEl.hidden = false;
   }
 
   function endRun() {
     abortCtl = null;
-    if (cancelEl) cancelEl.hidden = true;
   }
 
   function cancelRun() {
@@ -57,9 +55,6 @@
     setProgress(message);
     return { ok: false, error: message, exported: 0, failed: failures.length, failures: failures };
   }
-  let statusEl = null;
-  let buttonEl = null;
-
   function delayMs() {
     const raw = document.documentElement.getAttribute("data-chatout-archive-delay");
     if (raw == null || raw === "") return 400;
@@ -68,13 +63,13 @@
   }
 
   function setProgress(text) {
-    document.documentElement.setAttribute("data-chatout-archive-progress", text);
-    if (statusEl) statusEl.textContent = text;
+    const value = text == null ? "" : String(text);
+    document.documentElement.setAttribute("data-chatout-archive-progress", value);
   }
 
   function setResult(result) {
-    lastResult = result;
-    document.documentElement.setAttribute("data-chatout-archive-result", JSON.stringify(result));
+    lastResult = result ? Object.assign({ mode: runMode }, result) : result;
+    document.documentElement.setAttribute("data-chatout-archive-result", JSON.stringify(lastResult));
   }
 
   function titleFromDom() {
@@ -902,15 +897,16 @@
   }
 
   async function archiveProject() {
-    if (running) return;
+    if (running) return { started: false, error: "An archive is already running." };
+    runMode = "project";
+    lastResult = null;
     const project = lib.detectProjectUrl(location.href);
     if (!project) {
       setResult({ ok: false, error: "Open a project or notebook page first." });
-      return;
+      return { started: false, error: "Open a project or notebook page first." };
     }
     running = true;
     beginRun();
-    if (buttonEl) buttonEl.disabled = true;
     document.documentElement.removeAttribute("data-chatout-archive-result");
     const pause = delayMs();
     const failures = [];
@@ -1033,8 +1029,8 @@
     } finally {
       running = false;
       endRun();
-      if (buttonEl) buttonEl.disabled = false;
     }
+    return { started: true };
   }
 
   /* ---- Archive everything: every project plus chats outside projects, current site only. ---- */
@@ -1119,6 +1115,7 @@
   async function archiveEverything(scopeArg) {
     const scope = scopeArg === "projects" || scopeArg === "chats" ? scopeArg : "everything";
     if (running) return { started: false, error: "An archive is already running." };
+    runMode = scope;
     const provider = lib.providerFromUrl ? lib.providerFromUrl(location.href) : null;
     const host = location.hostname;
     const site = provider || (host.endsWith("chatgpt.com") ? "chatgpt" : host.endsWith("claude.ai") ? "claude" : host.endsWith("gemini.google.com") ? "gemini" : host === "grok.com" ? "grok" : "");
@@ -1311,6 +1308,17 @@
   if (api && api.runtime && api.runtime.onMessage) {
     api.runtime.onMessage.addListener(function (msg, _sender, sendResponse) {
       if (!msg || window.top !== window) return;
+      if (msg.type === "chatout-archive-project") {
+        if (running) { sendResponse({ started: false, error: "An archive is already running." }); return; }
+        if (!lib.detectProjectUrl(location.href)) {
+          sendResponse({ started: false, error: "Open a project or notebook page first." });
+          return;
+        }
+        lastResult = null;
+        archiveProject();
+        sendResponse({ started: true });
+        return;
+      }
       if (msg.type === "chatout-archive-everything") {
         if (running) { sendResponse({ started: false, error: "An archive is already running." }); return; }
         lastResult = null;
@@ -1325,8 +1333,10 @@
       if (msg.type === "chatout-archive-status") {
         sendResponse({
           running: running,
+          mode: running ? runMode : ((lastResult && lastResult.mode) || ""),
           progress: document.documentElement.getAttribute("data-chatout-archive-progress") || "",
-          result: lastResult
+          result: lastResult,
+          project: lib.detectProjectUrl(location.href)
         });
       }
     });
@@ -1344,44 +1354,6 @@
     }
   }
 
-  function ensureUi() {
-    const project = lib.detectProjectUrl(location.href);
-    let host = document.getElementById("chatout-archive-root");
-    if (!project) {
-      if (host) host.remove();
-      statusEl = null;
-      buttonEl = null;
-      return;
-    }
-    if (host) return;
-    host = document.createElement("div");
-    host.id = "chatout-archive-root";
-    host.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;z-index:2147483646;";
-    const shadow = host.attachShadow({ mode: "open" });
-    shadow.innerHTML = [
-      "<style>",
-      ":host{all:initial}",
-      ".panel{position:fixed;top:12px;right:12px;z-index:2147483646;display:flex;flex-direction:column;gap:6px;align-items:flex-end;font-family:system-ui,sans-serif}",
-      "button{appearance:none;border:0;border-radius:999px;background:#111827;color:#f9fafb;font:600 14px/1.2 system-ui,sans-serif;padding:10px 14px;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25)}",
-      "button:disabled{opacity:.6;cursor:progress}",
-      "button[hidden]{display:none}",
-      ".status{max-width:320px;background:#fff;color:#111827;border-radius:10px;padding:8px 10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)}",
-      "</style>",
-      "<div class='panel'>",
-      "<button type='button' id='chatout-archive-project'>Archive project</button>",
-      "<button type='button' id='chatout-archive-cancel' hidden>Cancel</button>",
-      "<div class='status' id='chatout-archive-status' role='status' aria-live='polite'>Save every chat in this project.</div>",
-      "</div>"
-    ].join("");
-    buttonEl = shadow.getElementById("chatout-archive-project");
-    statusEl = shadow.getElementById("chatout-archive-status");
-    cancelEl = shadow.getElementById("chatout-archive-cancel");
-    cancelEl.hidden = !running;
-    cancelEl.addEventListener("click", function () { cancelRun(); });
-    buttonEl.addEventListener("click", function () { archiveProject(); });
-    document.documentElement.appendChild(host);
-  }
-
   document.addEventListener("chatout-command", function () {
     const command = document.documentElement.getAttribute("data-chatout-command") || "";
     if (command === "archive-project") archiveProject();
@@ -1390,8 +1362,6 @@
     else if (command === "export-markdown") exportCurrent();
   }, true);
 
-  ensureUi();
-  setInterval(ensureUi, 1000);
   document.documentElement.setAttribute("data-chatout-ready", "1");
   globalThis.__CHATOUT_ARCHIVE__ = {
     archiveProject: archiveProject,

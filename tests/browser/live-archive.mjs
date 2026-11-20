@@ -36,9 +36,15 @@ async function main() {
     await page.evaluate(function (ms) {
       document.documentElement.setAttribute("data-chatout-archive-delay", String(ms));
     }, delay);
-    const button = page.getByRole("button", { name: "Archive project" });
-    if (await button.count() === 0) {
-      throw new Error("No Archive project button. Open a ChatGPT project, Claude project, or Gemini notebook URL.");
+    const worker = await serviceWorker(session.context);
+    const tabId = await worker.evaluate(function (url) {
+      return new Promise(function (resolve) { chrome.tabs.query({}, function (tabs) { resolve(tabs.filter(function (tab) { return tab.url === url; }).pop().id); }); });
+    }, page.url());
+    const popup = await session.context.newPage();
+    await popup.goto("chrome-extension://" + new URL(worker.url()).host + "/popup.html?tabId=" + tabId);
+    const button = popup.locator("#chatout-archive-project-start");
+    if (!(await popup.locator("#chatout-archive-project").isVisible())) {
+      throw new Error("No Archive project control. Open a ChatGPT project, Claude project, Grok project, or Gemini notebook URL.");
     }
     await button.click();
     await page.waitForFunction(function () {
@@ -57,7 +63,7 @@ async function main() {
     }, null, 2));
     if (!result.ok) process.exit(1);
     if (result.downloadId == null) throw new Error("download id missing");
-    const worker = await serviceWorker(session.context);
+    await popup.close();
     const saved = await waitForDownload(worker, result.downloadId);
     const dest = path.join(path.resolve(outDir), path.basename(saved.filename));
     await copyFile(saved.filename, dest);
