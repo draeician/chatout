@@ -4,8 +4,9 @@
 - **Branch:** `fix/archive-project-idle-status`
 - **Base:** `origin/main` @ `e100962` (v3.7.0.23)
 - **Verified commit:** `7ca3d91` (v3.7.0.25)
-- **Status:** verified for review; **not merged**
-- **Task:** `.crules/tasks/review/move-archive-project-into-popup.md`
+- **Docs commit:** `6783054`
+- **Status:** review approved; merged to `main` with `--no-ff`
+- **Task:** `.crules/tasks/done/move-archive-project-into-popup.md`
 
 ## What changed
 
@@ -48,6 +49,20 @@ popup.
 No production or test corrections were required during the verification pass.
 This pass updates only this handoff and the task file; version `3.7.0.25` and
 `CHANGELOG.md` remain unchanged because no loadable change was needed.
+
+## Review approval and merge
+
+- **Review approved:** 2026-11-20; merge and feature-branch cleanup authorized.
+- **Merge method:** `git merge --no-ff fix/archive-project-idle-status`.
+- **Merge target:** `main`.
+- **History:** no rebase, no force-push, no shared-history rewrite.
+- **Verified implementation:** `7ca3d91`; the only changes after verification
+  were the task move and this handoff (`6783054` plus the merge commit), so
+  the gate evidence below applies to the merged implementation.
+- **Final main SHA:** recorded in the merge completion report, since a commit
+  cannot contain its own merge SHA.
+- **Cleanup:** local and remote `fix/archive-project-idle-status` branches are
+  removed after the merge.
 
 ## Verification environment
 
@@ -144,6 +159,8 @@ reload is still useful before release:
 
 ## Next action
 
-Review the branch. The full required gate passed at `7ca3d91`; this handoff
-and the task file are the only follow-up changes. Do not merge until review
-approval.
+Complete. The approved branch was merged into `main` with `--no-ff` and the
+feature branch was removed. The full required gate passed at `7ca3d91`; the
+only post-verification changes were the task move, this handoff, and the merge
+commit. No verification blockers remain. Use the packaged
+`dist/chatout-chrome-v3.7.0.25.zip` for release if desired.

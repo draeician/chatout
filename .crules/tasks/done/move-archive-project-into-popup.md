@@ -4,7 +4,9 @@
 - **Branch:** `fix/archive-project-idle-status`
 - **Base:** `origin/main` @ `e100962` (v3.7.0.23)
 - **Verified commit:** `7ca3d91` (v3.7.0.25)
-- **Status:** review — complete verification gate passed in a disposable Node 22 environment
+- **Docs commit:** `6783054`
+- **Status:** done — review approved; merged to `main` with `--no-ff`
+- **Review approval:** 2026-11-20 — merge and feature-branch cleanup authorized
 
 ## Goal
 
@@ -42,7 +44,9 @@ status is restored when it reopens.
       `dist/chatout-chrome-v3.7.0.25.zip`.
 - [x] `git diff --check` passes.
 - [x] Changes are scanned for secrets.
-- [x] Work is committed and pushed on the branch; task remains in `review/`.
+- [x] Work is committed and pushed on the branch; task moved to `done/`.
+- [x] Review approved; merge and cleanup authorized.
+- [x] Merged to `main` without rewriting shared history.
 
 ## Verification environment
 
@@ -148,6 +152,17 @@ No production or test corrections were required. The branch passed the full
 gate as committed at `7ca3d91`. This verification pass updates only the task
 file and `HANDOFF.md`; version `3.7.0.25` and `CHANGELOG.md` remain unchanged
 because no loadable change was needed.
+
+## Merge and cleanup
+
+- **Review approval:** 2026-11-20; merge and feature-branch cleanup authorized.
+- **Merge method:** `git merge --no-ff fix/archive-project-idle-status`.
+- **Merge target:** `main`.
+- **History:** no rebase, no force-push, no shared-history rewrite.
+- **Cleanup:** local and remote `fix/archive-project-idle-status` branches are
+  removed after the merge.
+- **Final main SHA:** recorded in the merge completion report, since a commit
+  cannot contain its own merge SHA.
 
 ## Coder Notes
 
