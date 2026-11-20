@@ -68,13 +68,19 @@
   }
 
   function setProgress(text) {
-    document.documentElement.setAttribute("data-chatout-archive-progress", text);
-    if (statusEl) statusEl.textContent = text;
+    const value = text == null ? "" : String(text);
+    document.documentElement.setAttribute("data-chatout-archive-progress", value);
+    if (!statusEl) return;
+    statusEl.textContent = value;
+    statusEl.hidden = !value;
   }
 
   function setResult(result) {
     lastResult = result;
     document.documentElement.setAttribute("data-chatout-archive-result", JSON.stringify(result));
+    if (statusEl && statusEl.hidden && result && !result.ok && result.error) {
+      setProgress(result.error);
+    }
   }
 
   function titleFromDom() {
@@ -1366,16 +1372,21 @@
       "button:disabled{opacity:.6;cursor:progress}",
       "button[hidden]{display:none}",
       ".status{max-width:320px;background:#fff;color:#111827;border-radius:10px;padding:8px 10px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18)}",
+      ".status[hidden]{display:none}",
       "</style>",
       "<div class='panel'>",
       "<button type='button' id='chatout-archive-project'>Archive project</button>",
       "<button type='button' id='chatout-archive-cancel' hidden>Cancel</button>",
-      "<div class='status' id='chatout-archive-status' role='status' aria-live='polite'>Save every chat in this project.</div>",
+      "<div class='status' id='chatout-archive-status' role='status' aria-live='polite' hidden></div>",
       "</div>"
     ].join("");
     buttonEl = shadow.getElementById("chatout-archive-project");
     statusEl = shadow.getElementById("chatout-archive-status");
     cancelEl = shadow.getElementById("chatout-archive-cancel");
+    const progressText = document.documentElement.getAttribute("data-chatout-archive-progress") || "";
+    const initialText = progressText || (lastResult && lastResult.error) || "";
+    statusEl.textContent = initialText;
+    statusEl.hidden = !initialText;
     cancelEl.hidden = !running;
     cancelEl.addEventListener("click", function () { cancelRun(); });
     buttonEl.addEventListener("click", function () { archiveProject(); });

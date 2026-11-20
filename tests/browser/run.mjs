@@ -127,6 +127,57 @@ check("chatgpt single-chat export", async function (context) {
   await page.close();
 });
 
+check("archive status is hidden when idle and does not block page controls", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
+  const status = page.locator("#chatout-archive-status");
+  if (await status.isVisible()) throw new Error("idle status panel is visible");
+  const shadowText = await page.evaluate(function () {
+    const host = document.getElementById("chatout-archive-root");
+    return host && host.shadowRoot ? host.shadowRoot.textContent : "";
+  });
+  if (shadowText.includes("Save every chat in this project")) throw new Error("idle message is still rendered: " + shadowText);
+  await page.evaluate(function () {
+    const button = document.createElement("button");
+    button.id = "under-archive-panel";
+    button.type = "button";
+    button.textContent = "Copy";
+    button.style.cssText = "position:fixed;top:56px;right:12px;width:140px;height:32px;z-index:1";
+    button.addEventListener("click", function () { button.setAttribute("data-clicked", "1"); });
+    document.body.appendChild(button);
+  });
+  const box = await page.locator("#under-archive-panel").boundingBox();
+  if (!box) throw new Error("underlying control has no box");
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  if (await page.locator("#under-archive-panel").getAttribute("data-clicked") !== "1") {
+    throw new Error("hidden archive status intercepted the click");
+  }
+  if (!(await page.getByRole("button", { name: "Archive project" }).isVisible())) throw new Error("Archive project button is hidden");
+  await page.close();
+});
+
+check("archive progress and cancellation stay visible", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
+  await page.evaluate(function () {
+    document.documentElement.setAttribute("data-chatout-archive-delay", "700");
+    document.documentElement.removeAttribute("data-chatout-archive-result");
+    document.documentElement.removeAttribute("data-chatout-archive-progress");
+  });
+  const status = page.locator("#chatout-archive-status");
+  await page.getByRole("button", { name: "Archive project" }).click();
+  await status.waitFor({ state: "visible", timeout: 5000 });
+  const progress = (await status.innerText()).trim();
+  if (!progress) throw new Error("progress text is empty while running");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  const handle = await page.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-archive-result");
+  }, null, { timeout: 15000 });
+  const result = JSON.parse(await handle.jsonValue());
+  if (!result.cancelled) throw new Error(JSON.stringify(result));
+  if (!(await status.isVisible())) throw new Error("cancellation message is hidden");
+  if (!/Archive cancelled/.test(await status.innerText())) throw new Error("cancellation text: " + await status.innerText());
+  await page.close();
+});
+
 check("chatgpt project chat export", async function (context) {
   const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
   const saved = await exportMarkdown(page);
@@ -170,7 +221,9 @@ check("chatgpt project archive", async function (context) {
   if (!index.includes("Exported: 3") || !index.includes("Failed: 1") || !index.includes("Broken chat")) {
     throw new Error("index missing summary\n" + index);
   }
-  const progress = await page.locator("#chatout-archive-status").innerText();
+  const status = page.locator("#chatout-archive-status");
+  if (!(await status.isVisible())) throw new Error("completion summary is hidden");
+  const progress = await status.innerText();
   if (!/Exported 3, failed 1/.test(progress)) throw new Error("progress text: " + progress);
   await page.close();
 });

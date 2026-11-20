@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.24] - 2026-11-20
+
+### Fixed
+- The on-page "Archive project" panel no longer shows the persistent "Save every chat in this project." message while idle. The white status panel now appears only while an archive is running or when a progress, cancellation, error, or completion message needs to be shown, and a hidden panel no longer sits over page controls such as ChatGPT code-block Copy buttons.
+
 ## [3.7.0.23] - 2026-10-31
 
 ### Changed
