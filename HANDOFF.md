@@ -3,8 +3,8 @@
 - **Owner:** Assigned coding agent
 - **Branch:** `fix/archive-project-idle-status`
 - **Base:** `origin/main` @ `e100962` (v3.7.0.23)
-- **Version:** `3.7.0.25`
-- **Status:** pushed for review; **not merged**
+- **Verified commit:** `7ca3d91` (v3.7.0.25)
+- **Status:** verified for review; **not merged**
 - **Task:** `.crules/tasks/review/move-archive-project-into-popup.md`
 
 ## What changed
@@ -45,66 +45,97 @@ popup.
 - `manifest.json`: `3.7.0.24` → `3.7.0.25`.
 - `CHANGELOG.md`: matching `[3.7.0.25] - 2026-11-20` entry.
 
-## Verification commands and results
+No production or test corrections were required during the verification pass.
+This pass updates only this handoff and the task file; version `3.7.0.25` and
+`CHANGELOG.md` remain unchanged because no loadable change was needed.
 
-| Command | Result |
-|---|---|
-| `node scripts/build-extension.mjs` | PASS — "Built 12 extension artifacts from src." |
-| `diff -q src/content/project-archive.js content-scripts/project-archive.js` | PASS — identical |
-| `diff -q src/popup/archive-everything.js popup-archive.js` | PASS — identical |
-| `node --check src/content/project-archive.js` | PASS |
-| `node --check src/popup/archive-everything.js` | PASS |
-| `node --check tests/browser/run.mjs` | PASS |
-| `node --check tests/browser/live-archive.mjs` | PASS |
-| `node --test tests/unit/project-archive-lib.test.mjs tests/unit/project-archive-popup.test.mjs` | PASS — 10/10 |
-| `node --test tests/unit/*.test.mjs` on clean tracked snapshot | PASS — 13/13 |
-| `node tests/browser/run.mjs` | **BLOCKED** — Playwright requires Node.js 20+, host has 18.19.1 |
-| `./scripts/check-forbidden-analytics-patterns.sh` | exit 0, but `rg: command not found`; not authoritative |
-| `./scripts/check-forbidden-domains.sh` | exit 0, but `rg: command not found`; not authoritative |
-| Supplemental `grep -rEn` analytics/domain scans | PASS — no forbidden IDs or domains |
-| Secret scan of staged diff | PASS — no sensitive filenames or credential patterns |
-| `git diff --check` | PASS |
+## Verification environment
 
-### Clean-snapshot unit verification
+The full gate ran on a fresh clone of the branch inside a disposable Podman
+container. Nothing was installed or changed on the host or system-wide.
 
-Snapshot: `/tmp/opencode/verify-popup-archive`, built from the tracked file set
-with working-tree contents plus the new unit test.
+- **Container:** `docker.io/library/node:22-bookworm`
+- **Node.js:** `v22.23.5`
+- **npm:** `10.9.9`
+- **ripgrep:** `13.0.0`
+- **Playwright:** `1.64.1`
+- **Chromium:** Playwright Chromium/Headless Shell `156.0.8078.4`
+- **OS:** Debian GNU/Linux 12 (bookworm), Linux `7.0.0-43-generic` x86_64
+- **Clone:** `/tmp/opencode/chatout-verify-v25`
+- **Verified commit:** `7ca3d91` (branch tip)
 
-- `node --test tests/unit/*.test.mjs` → 13 passed, 0 failed.
-- No ignored `archive/` or `content-scripts/split/` directories are present.
-
-### Browser-suite blocker
-
-`node tests/browser/run.mjs` exits before launching Chromium:
-
-```
-Playwright requires Node.js 20 or higher.
-Please update your version of Node.js.
-```
-
-The host provides Node.js 18.19.1 at `/usr/bin/node`; no Node 20+ runtime was
-found. The exact unblock is to run the suite with Node.js 20 or newer.
-
-### Guard-script blocker
-
-`rg` (ripgrep) is not installed. Both guard scripts use `if rg ...`, so a
-missing `rg` is treated as "no match" and the script prints success without
-scanning. Supplemental `grep` scans passed, but the scripts need `rg` for an
-authoritative result.
-
-## Manual verification still recommended
-
-After a Node 20+ runtime is available, run:
+Environment preparation inside the disposable container:
 
 ```bash
-node tests/browser/run.mjs
+apt-get update
+apt-get install -y --no-install-recommends ripgrep zip
+npm install
+npx playwright install --with-deps chromium
 ```
 
-Then reload the unpacked extension at `chrome://extensions` and confirm on a
-project page:
+## Final verification commands and results
+
+All commands ran in `/work` (the mounted disposable clone) on commit
+`7ca3d91`.
+
+| Command | Exit | Result |
+|---|---:|---|
+| `node scripts/build-extension.mjs` | 0 | `Built 12 extension artifacts from src/.` |
+| `make test-browser` | 0 | Unit **13 passed, 0 failed**; browser **23 passed, 0 failed** |
+| `./scripts/check-forbidden-analytics-patterns.sh` | 0 | `✅ No forbidden analytics patterns found in emitted extension artifacts.` |
+| `./scripts/check-forbidden-domains.sh` | 0 | `✅ No forbidden domains detected in shipped extension artifacts.` |
+| `./scripts/package-extension.sh` | 0 | Wrote `dist/chatout-chrome-v3.7.0.25.zip` (50 entries; manifest version `3.7.0.25`) |
+| `git diff --check` | 0 | No whitespace errors |
+
+### Browser suite results
+
+```
+PASS chatgpt single-chat export
+PASS archive project controls are not injected into the page
+PASS popup shows Archive project only on a supported project page
+PASS popup shows project archive progress and cancellation
+PASS popup restores a running project archive after reopening
+PASS chatgpt project chat export
+PASS claude single-chat export
+PASS chatgpt project archive
+PASS chatgpt project archive falls back to the page
+PASS claude project archive
+PASS gemini notebook archive
+PASS chatgpt archive everything dedupes
+PASS chatgpt projects only and chats only
+PASS claude archive everything dedupes
+PASS popup checkbox runs once and unchecks itself
+PASS grok project archive
+PASS grok archive everything dedupes and reports failures
+PASS popup archive everything: declining the confirm starts nothing
+PASS popup cancel stops a running archive and saves nothing
+PASS popup project cancel stops the run and saves nothing
+PASS include images and attachments: on saves files and rewrites links, off unchanged
+PASS gemini archive everything lists chats with MaZiqc
+PASS gemini falls back to a sidebar without links
+23 passed, 0 failed
+```
+
+### Environment-only issue corrected
+
+The first package attempt inside the container exited `127` because the
+minimal Node image did not include the `zip` binary:
+
+```
+./scripts/package-extension.sh: line 32: zip: command not found
+```
+
+`zip` was installed in the disposable container, then the package command
+re-ran with exit `0`. No repository code or test was changed.
+
+## Manual spot checks still useful
+
+The automated suite covers the requested behavior. A quick unpacked-extension
+reload is still useful before release:
 
 1. No "Archive project" button or status panel is injected into the page.
-2. The ChatOut popup shows "Archive project" and the detected provider.
+2. The ChatOut popup shows "Archive project" and the detected provider on a
+   project page.
 3. Starting it shows progress in the popup; Cancel stops it.
 4. Closing the popup during a run and reopening it restores progress.
 5. Reopening after completion restores the completion text.
@@ -113,5 +144,6 @@ project page:
 
 ## Next action
 
-Review the branch and run the browser suite with Node.js 20+ and `rg`. Do not
-merge into `main` until review approval.
+Review the branch. The full required gate passed at `7ca3d91`; this handoff
+and the task file are the only follow-up changes. Do not merge until review
+approval.

@@ -3,7 +3,8 @@
 - **Owner:** Assigned coding agent
 - **Branch:** `fix/archive-project-idle-status`
 - **Base:** `origin/main` @ `e100962` (v3.7.0.23)
-- **Status:** review — implementation and unit checks complete; browser gate blocked by Node 18
+- **Verified commit:** `7ca3d91` (v3.7.0.25)
+- **Status:** review — complete verification gate passed in a disposable Node 22 environment
 
 ## Goal
 
@@ -32,34 +33,95 @@ status is restored when it reopens.
 - [x] Existing single-chat export and site archive controls are preserved.
 - [x] Regression tests cover project detection, popup visibility/controls, and
       archive execution.
-- [ ] `make test-browser` passes — **blocked by the environment**: the
-      installed Playwright requires Node.js 20 or newer, and this host only has
-      Node.js 18.19.1. Unit tests pass; the e2e half cannot start.
+- [x] `make test-browser` passes: unit 13/13 and browser 23/23.
 - [x] `node scripts/build-extension.mjs` passes and regenerates artifacts.
 - [x] `manifest.json` version is `3.7.0.25` with a matching `CHANGELOG.md`
       heading.
+- [x] Forbidden analytics and domain guards pass with `ripgrep` installed.
+- [x] `./scripts/package-extension.sh` writes
+      `dist/chatout-chrome-v3.7.0.25.zip`.
+- [x] `git diff --check` passes.
 - [x] Changes are scanned for secrets.
-- [x] Work is committed and pushed on the branch; task is in `review/`.
+- [x] Work is committed and pushed on the branch; task remains in `review/`.
 
-## Verification evidence
+## Verification environment
 
-| Command | Result |
-|---|---|
-| `node scripts/build-extension.mjs` | PASS — "Built 12 extension artifacts from src." |
-| `diff -q src/content/project-archive.js content-scripts/project-archive.js` | PASS |
-| `diff -q src/popup/archive-everything.js popup-archive.js` | PASS |
-| `node --check src/content/project-archive.js` | PASS |
-| `node --check src/popup/archive-everything.js` | PASS |
-| `node --check tests/browser/run.mjs` | PASS |
-| `node --check tests/browser/live-archive.mjs` | PASS |
-| `node --test tests/unit/project-archive-lib.test.mjs tests/unit/project-archive-popup.test.mjs` | PASS — 10/10 |
-| `node --test tests/unit/*.test.mjs` | 11/13 — pre-existing `no-cjk-ui.test.mjs` scans ignored `archive/` and `content-scripts/split/`; clean tracked snapshot passes |
-| `node tests/browser/run.mjs` | BLOCKED — Playwright requires Node.js 20+, host has 18.19.1 |
-| `./scripts/check-forbidden-analytics-patterns.sh` | exit 0, but `rg` is missing so it does not scan |
-| `./scripts/check-forbidden-domains.sh` | exit 0, but `rg` is missing so it does not scan |
-| Supplemental `grep -rEn` analytics/domain scans | PASS |
-| Secret scan of staged diff | PASS |
-| `git diff --check` | PASS |
+The gate was run on a fresh clone of the branch inside a disposable Podman
+container. Nothing was installed or changed on the host or system-wide.
+
+- **Container:** `docker.io/library/node:22-bookworm`
+- **Node.js:** `v22.23.5`
+- **npm:** `10.9.9`
+- **ripgrep:** `13.0.0`
+- **Playwright:** `1.64.1`
+- **Chromium:** Playwright Chromium/Headless Shell `156.0.8078.4`
+- **OS:** Debian GNU/Linux 12 (bookworm), Linux `7.0.0-43-generic` x86_64
+- **Clone:** `/tmp/opencode/chatout-verify-v25`
+- **Verified commit:** `7ca3d91` (branch tip)
+
+Environment preparation inside the disposable container:
+
+```bash
+apt-get update
+apt-get install -y --no-install-recommends ripgrep zip
+npm install
+npx playwright install --with-deps chromium
+```
+
+## Final verification evidence
+
+All commands below ran in `/work` (the mounted disposable clone) on the
+verified commit.
+
+| Command | Exit | Result |
+|---|---:|---|
+| `node scripts/build-extension.mjs` | 0 | `Built 12 extension artifacts from src/.` |
+| `make test-browser` | 0 | Unit **13 passed, 0 failed**; browser **23 passed, 0 failed** |
+| `./scripts/check-forbidden-analytics-patterns.sh` | 0 | `✅ No forbidden analytics patterns found in emitted extension artifacts.` |
+| `./scripts/check-forbidden-domains.sh` | 0 | `✅ No forbidden domains detected in shipped extension artifacts.` |
+| `./scripts/package-extension.sh` | 0 | Wrote `dist/chatout-chrome-v3.7.0.25.zip` (50 entries; manifest version `3.7.0.25`) |
+| `git diff --check` | 0 | No whitespace errors |
+
+### Browser suite results
+
+```
+PASS chatgpt single-chat export
+PASS archive project controls are not injected into the page
+PASS popup shows Archive project only on a supported project page
+PASS popup shows project archive progress and cancellation
+PASS popup restores a running project archive after reopening
+PASS chatgpt project chat export
+PASS claude single-chat export
+PASS chatgpt project archive
+PASS chatgpt project archive falls back to the page
+PASS claude project archive
+PASS gemini notebook archive
+PASS chatgpt archive everything dedupes
+PASS chatgpt projects only and chats only
+PASS claude archive everything dedupes
+PASS popup checkbox runs once and unchecks itself
+PASS grok project archive
+PASS grok archive everything dedupes and reports failures
+PASS popup archive everything: declining the confirm starts nothing
+PASS popup cancel stops a running archive and saves nothing
+PASS popup project cancel stops the run and saves nothing
+PASS include images and attachments: on saves files and rewrites links, off unchanged
+PASS gemini archive everything lists chats with MaZiqc
+PASS gemini falls back to a sidebar without links
+23 passed, 0 failed
+```
+
+### Environment-only failure corrected
+
+The first package attempt inside the container exited `127` because the
+minimal Node image did not include the `zip` binary:
+
+```
+./scripts/package-extension.sh: line 32: zip: command not found
+```
+
+`zip` was installed in the disposable container, then the package command
+re-ran with exit `0`. No repository code or test was changed.
 
 ## Regression tests added
 
@@ -67,7 +129,7 @@ status is restored when it reopens.
   page UI, status reports/clears the detected project, the project message
   refuses a normal chat, starts on a project page, and cancel reports the run
   was active.
-- `tests/unit/project-archive-lib.test.mjs`: project detection now covers
+- `tests/unit/project-archive-lib.test.mjs`: project detection covers
   ChatGPT project chats, Gemini `/u/<n>/app/notebooks/<id>`, Grok projects,
   unsupported hosts, and invalid URLs.
 - `tests/browser/run.mjs`:
@@ -80,18 +142,12 @@ status is restored when it reopens.
   - existing project archive tests now start from the popup and assert the
     popup completion text.
 
-## Blockers
+## Corrections
 
-1. **Browser suite:** `node tests/browser/run.mjs` exits before launching
-   Chromium with:
-   `Playwright requires Node.js 20 or higher.` The host provides Node.js
-   18.19.1 at `/usr/bin/node`. The exact unblock is to run the suite with
-   Node.js 20+ (for example, install or select a Node 20 toolchain).
-2. **Guard scripts:** `rg` (ripgrep) is not installed, so both scripts treat a
-   missing matcher as "no match". Supplemental `grep` scans passed.
-3. **CJK unit test:** `tests/unit/no-cjk-ui.test.mjs` walks ignored local
-   `archive/` and `content-scripts/split/` directories. The clean tracked
-   snapshot passes; this is pre-existing and unrelated to this change.
+No production or test corrections were required. The branch passed the full
+gate as committed at `7ca3d91`. This verification pass updates only the task
+file and `HANDOFF.md`; version `3.7.0.25` and `CHANGELOG.md` remain unchanged
+because no loadable change was needed.
 
 ## Coder Notes
 
