@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0.25] - 2026-11-20
+
+### Changed
+- "Archive project" now lives in the ChatOut popup instead of an injected button and status panel on the website. The control appears only when the active tab is on a supported project or notebook page, and the popup shows progress, cancellation, errors, and completion results.
+- Project archives continue when the popup closes. Reopening the popup restores a running archive's progress and the last completion or cancellation result.
+
+### Removed
+- The on-page "Archive project" button and its white status panel, so page controls such as ChatGPT code-block Copy buttons are no longer covered.
+
 ## [3.7.0.24] - 2026-11-20
 
 ### Fixed

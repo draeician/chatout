@@ -62,6 +62,10 @@ test("detects project urls and ignores a normal chat", function () {
     { provider: "chatgpt", id: "g-p-fixture" }
   );
   assert.equal(lib.detectProjectUrl("https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"), null);
+  assert.deepEqual(
+    plain(lib.detectProjectUrl("https://chatgpt.com/g/g-p-fixture/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")),
+    { provider: "chatgpt", id: "g-p-fixture" }
+  );
   assert.equal(
     plain(lib.detectProjectUrl("https://claude.ai/project/99999999-9999-4999-8999-999999999999")).provider,
     "claude"
@@ -70,7 +74,17 @@ test("detects project urls and ignores a normal chat", function () {
     plain(lib.detectProjectUrl("https://gemini.google.com/notebook/nb-fixture")),
     { provider: "gemini", id: "nb-fixture" }
   );
+  assert.deepEqual(
+    plain(lib.detectProjectUrl("https://gemini.google.com/u/1/app/notebooks/nb-other")),
+    { provider: "gemini", id: "nb-other" }
+  );
   assert.equal(lib.detectProjectUrl("https://gemini.google.com/app/alpha"), null);
+  assert.deepEqual(
+    plain(lib.detectProjectUrl("https://grok.com/project/ws-fixture")),
+    { provider: "grok", id: "ws-fixture" }
+  );
+  assert.equal(lib.detectProjectUrl("https://chat.deepseek.com/a/chat/s/abc"), null);
+  assert.equal(lib.detectProjectUrl("not a url"), null);
 });
 
 test("stops paging when the cursor repeats and keeps partial results on error", async function () {

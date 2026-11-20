@@ -77,8 +77,11 @@ async function archiveProject(page, context) {
   await page.evaluate(function () {
     document.documentElement.setAttribute("data-chatout-archive-delay", "0");
     document.documentElement.removeAttribute("data-chatout-archive-result");
+    document.documentElement.removeAttribute("data-chatout-archive-progress");
   });
-  await page.getByRole("button", { name: "Archive project" }).click();
+  const popup = await openPopup(context, page);
+  await popup.locator("#chatout-archive-project").waitFor({ state: "visible", timeout: 5000 });
+  await popup.locator("#chatout-archive-project-start").click();
   await page.waitForFunction(function () {
     return document.documentElement.getAttribute("data-chatout-archive-result");
   }, null, { timeout: 30000 });
@@ -89,9 +92,15 @@ async function archiveProject(page, context) {
   if (result.downloadId == null) throw new Error("archive did not use chrome.downloads\n" + JSON.stringify(result));
   if (!/^(chatgpt|claude|gemini|grok)-[\p{L}\p{N}_-]+-\d{8}-\d{6}\.zip$/u.test(result.filename)) throw new Error("zip name " + result.filename);
   if (result.savedAs !== "chatout-archives/" + result.filename) throw new Error("savedAs " + result.savedAs);
+  await popup.waitForFunction(function () {
+    const el = document.querySelector("#chatout-archive-project-status");
+    return el && /Exported|Failed|No chats/.test(el.textContent);
+  }, null, { timeout: 10000 });
+  const statusText = (await popup.locator("#chatout-archive-project-status").innerText()).trim();
+  await popup.close();
   const worker = await serviceWorker(context);
   const saved = await waitForDownload(worker, result.downloadId);
-  return { result: result, file: saved.filename, names: unzipNames(saved.filename, result.filename) };
+  return { result: result, file: saved.filename, names: unzipNames(saved.filename, result.filename), statusText: statusText };
 }
 
 async function runScope(page, context, scope) {
@@ -127,15 +136,11 @@ check("chatgpt single-chat export", async function (context) {
   await page.close();
 });
 
-check("archive status is hidden when idle and does not block page controls", async function (context) {
+check("archive project controls are not injected into the page", async function (context) {
   const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
-  const status = page.locator("#chatout-archive-status");
-  if (await status.isVisible()) throw new Error("idle status panel is visible");
-  const shadowText = await page.evaluate(function () {
-    const host = document.getElementById("chatout-archive-root");
-    return host && host.shadowRoot ? host.shadowRoot.textContent : "";
-  });
-  if (shadowText.includes("Save every chat in this project")) throw new Error("idle message is still rendered: " + shadowText);
+  if (await page.locator("#chatout-archive-root").count()) throw new Error("on-page archive host still exists");
+  if (await page.locator("#chatout-archive-status").count()) throw new Error("on-page archive status still exists");
+  if (await page.getByRole("button", { name: "Archive project" }).count()) throw new Error("on-page Archive project button still exists");
   await page.evaluate(function () {
     const button = document.createElement("button");
     button.id = "under-archive-panel";
@@ -149,32 +154,94 @@ check("archive status is hidden when idle and does not block page controls", asy
   if (!box) throw new Error("underlying control has no box");
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   if (await page.locator("#under-archive-panel").getAttribute("data-clicked") !== "1") {
-    throw new Error("hidden archive status intercepted the click");
+    throw new Error("an injected archive control intercepted the click");
   }
-  if (!(await page.getByRole("button", { name: "Archive project" }).isVisible())) throw new Error("Archive project button is hidden");
   await page.close();
 });
 
-check("archive progress and cancellation stay visible", async function (context) {
+check("popup shows Archive project only on a supported project page", async function (context) {
+  const projectPage = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
+  const projectPopup = await openPopup(context, projectPage);
+  const section = projectPopup.locator("#chatout-archive-project");
+  await section.waitFor({ state: "visible", timeout: 5000 });
+  if (await projectPopup.locator("#chatout-archive-project-start").isDisabled()) throw new Error("project start is disabled");
+  const label = (await projectPopup.locator("#chatout-archive-project-name").innerText()).trim();
+  if (!/ChatGPT project detected/.test(label)) throw new Error("project label: " + label);
+  await projectPopup.close();
+  await projectPage.close();
+
+  const chatPage = await openFixture(context, "https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  const chatPopup = await openPopup(context, chatPage);
+  await chatPopup.waitForSelector("#chatout-archive-all", { timeout: 5000 });
+  await chatPopup.waitForTimeout(1200);
+  if (await chatPopup.locator("#chatout-archive-project").isVisible()) throw new Error("project section shown on a chat page");
+  if (await chatPopup.getByRole("button", { name: "Archive project" }).isVisible()) throw new Error("project button shown on a chat page");
+  await chatPopup.close();
+  await chatPage.close();
+});
+
+check("popup shows project archive progress and cancellation", async function (context) {
   const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
   await page.evaluate(function () {
     document.documentElement.setAttribute("data-chatout-archive-delay", "700");
     document.documentElement.removeAttribute("data-chatout-archive-result");
     document.documentElement.removeAttribute("data-chatout-archive-progress");
   });
-  const status = page.locator("#chatout-archive-status");
-  await page.getByRole("button", { name: "Archive project" }).click();
-  await status.waitFor({ state: "visible", timeout: 5000 });
+  const popup = await openPopup(context, page);
+  await popup.locator("#chatout-archive-project").waitFor({ state: "visible", timeout: 5000 });
+  await popup.locator("#chatout-archive-project-start").click();
+  const status = popup.locator("#chatout-archive-project-status");
+  await popup.waitForFunction(function () {
+    const el = document.querySelector("#chatout-archive-project-status");
+    return el && /Archiving|Listing|Saving/.test(el.textContent);
+  }, null, { timeout: 10000 });
   const progress = (await status.innerText()).trim();
   if (!progress) throw new Error("progress text is empty while running");
-  await page.getByRole("button", { name: "Cancel" }).click();
+  if (!(await popup.locator("#chatout-archive-project-cancel").isVisible())) throw new Error("project cancel is hidden while running");
+  await popup.locator("#chatout-archive-project-cancel").click();
   const handle = await page.waitForFunction(function () {
     return document.documentElement.getAttribute("data-chatout-archive-result");
   }, null, { timeout: 15000 });
   const result = JSON.parse(await handle.jsonValue());
   if (!result.cancelled) throw new Error(JSON.stringify(result));
+  await popup.waitForFunction(function () {
+    const el = document.querySelector("#chatout-archive-project-status");
+    return el && /Archive cancelled/.test(el.textContent);
+  }, null, { timeout: 15000 });
   if (!(await status.isVisible())) throw new Error("cancellation message is hidden");
-  if (!/Archive cancelled/.test(await status.innerText())) throw new Error("cancellation text: " + await status.innerText());
+  await popup.close();
+  await page.close();
+});
+
+check("popup restores a running project archive after reopening", async function (context) {
+  const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
+  await page.evaluate(function () {
+    document.documentElement.setAttribute("data-chatout-archive-delay", "3000");
+    document.documentElement.removeAttribute("data-chatout-archive-result");
+    document.documentElement.removeAttribute("data-chatout-archive-progress");
+  });
+  const first = await openPopup(context, page);
+  await first.locator("#chatout-archive-project").waitFor({ state: "visible", timeout: 5000 });
+  await first.locator("#chatout-archive-project-start").click();
+  await first.waitForFunction(function () {
+    const el = document.querySelector("#chatout-archive-project-status");
+    return el && /Archiving|Listing|Saving/.test(el.textContent);
+  }, null, { timeout: 10000 });
+  await first.close();
+
+  const second = await openPopup(context, page);
+  await second.locator("#chatout-archive-project").waitFor({ state: "visible", timeout: 5000 });
+  await second.waitForFunction(function () {
+    const el = document.querySelector("#chatout-archive-project-status");
+    return el && /Archiving|Listing|Saving/.test(el.textContent);
+  }, null, { timeout: 10000 });
+  if (!(await second.locator("#chatout-archive-project-start").isDisabled())) throw new Error("project start is enabled during a run");
+  if (!(await second.locator("#chatout-archive-project-cancel").isVisible())) throw new Error("project cancel is hidden after reopening");
+  await second.locator("#chatout-archive-project-cancel").click();
+  await page.waitForFunction(function () {
+    return document.documentElement.getAttribute("data-chatout-archive-result");
+  }, null, { timeout: 15000 });
+  await second.close();
   await page.close();
 });
 
@@ -221,10 +288,13 @@ check("chatgpt project archive", async function (context) {
   if (!index.includes("Exported: 3") || !index.includes("Failed: 1") || !index.includes("Broken chat")) {
     throw new Error("index missing summary\n" + index);
   }
-  const status = page.locator("#chatout-archive-status");
-  if (!(await status.isVisible())) throw new Error("completion summary is hidden");
-  const progress = await status.innerText();
-  if (!/Exported 3, failed 1/.test(progress)) throw new Error("progress text: " + progress);
+  if (!/Exported 3, failed 1/.test(saved.statusText)) throw new Error("popup status: " + saved.statusText);
+  const reopened = await openPopup(context, page);
+  await reopened.waitForFunction(function () {
+    const el = document.querySelector("#chatout-archive-project-status");
+    return el && /Exported 3, failed 1/.test(el.textContent);
+  }, null, { timeout: 10000 });
+  await reopened.close();
   await page.close();
 });
 
@@ -415,14 +485,23 @@ check("popup cancel stops a running archive and saves nothing", async function (
   await page.close();
 });
 
-check("on-page cancel stops a project archive", async function (context) {
+check("popup project cancel stops the run and saves nothing", async function (context) {
   const page = await openFixture(context, "https://chatgpt.com/g/g-p-fixture/project");
   await page.evaluate(function () { document.documentElement.setAttribute("data-chatout-archive-delay", "700"); document.documentElement.removeAttribute("data-chatout-archive-result"); });
-  await page.getByRole("button", { name: "Archive project" }).click();
-  await page.getByRole("button", { name: "Cancel" }).click();
+  const worker = await serviceWorker(context);
+  const before = await worker.evaluate(function () { return new Promise(function (r) { chrome.downloads.search({}, function (i) { r(i.length); }); }); });
+  const popup = await openPopup(context, page);
+  await popup.locator("#chatout-archive-project").waitFor({ state: "visible", timeout: 5000 });
+  await popup.locator("#chatout-archive-project-start").click();
+  await popup.locator("#chatout-archive-project-cancel").waitFor({ state: "visible", timeout: 5000 });
+  await popup.locator("#chatout-archive-project-cancel").click();
   const handle = await page.waitForFunction(function () { return document.documentElement.getAttribute("data-chatout-archive-result"); }, null, { timeout: 15000 });
   const result = JSON.parse(await handle.jsonValue());
   if (!result.cancelled) throw new Error(JSON.stringify(result));
+  await page.waitForTimeout(1500);
+  const after = await worker.evaluate(function () { return new Promise(function (r) { chrome.downloads.search({}, function (i) { r(i.length); }); }); });
+  if (after !== before) throw new Error("a file was saved after cancel");
+  await popup.close();
   await page.close();
 });
 
